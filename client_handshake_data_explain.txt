@@ -1,0 +1,20 @@
+packet "handshake" length  16
+  packet id 0
+  varint client version  754 (1.16.4)
+  .
+  varint string size  9 bytes
+    "localhost"
+    .
+    .
+    .
+    .
+    .
+    .
+    .
+    .
+  u16 server port  25565
+  .
+  varint next state  (status)
+packet "request" length 1
+  packet id 0
+  (no data)
