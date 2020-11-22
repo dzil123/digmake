@@ -1,0 +1,19 @@
+string with a length prefix is called a pascal string
+as opposed to a string with null terminator called a c string
+https://en.wikipedia.org/wiki/String_(computer_science)#Length-prefixed
+
+https://github.com/Geal/nom
+rust parser library
+
+fasterthanlime did some articles with nom
+
+https://crates.io/crates/derive-try-from-primitive
+TryFrom i32 -> enum(repr=i32)
+
+https://serde.rs/impl-deserialize.html
+
+https://wiki.vg/Server_List_Ping
+https://wiki.vg/How_to_Write_a_Server
+protocol version 1.16.4 754
+https://wiki.vg/Protocol#Packet_format
+https://wiki.vg/Protocol#Definitions
