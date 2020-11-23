@@ -4,6 +4,14 @@ version = "0.1.0"
 authors = ["dzil123 <5725958+dzil123@users.noreply.github.com>"]
 edition = "2018"
 
+[lib]
+name = "digmake"
+path = "src/lib.rs"
+
+[[bin]]
+name = "digmake"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
