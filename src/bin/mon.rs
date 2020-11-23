@@ -49,7 +49,54 @@ mod errors {
         pub fn custom<T>(input: Input<'a>, msg: String) -> Result<'a, T> {
             Err(nom::Err::Error(Error::custom_raw(input, msg)))
         }
+
+        pub fn custom_slice<T>(
+            original_input: Input<'a>,
+            input: Input<'a>,
+            msg: String,
+        ) -> Result<'a, T> {
+            use nom::Offset;
+            let err_slice = &original_input[..original_input.offset(input)];
+            Error::custom(err_slice, msg)
+        }
+
+        // pub fn map<T, E, F>(
+        //     result: std::result::Result<T, E>,
+        //     original_input: Input<'a>,
+        //     input: Input<'a>,
+        //     func: F,
+        // ) -> Result<'a, T>
+        // where
+        //     F: FnOnce(E) -> String,
+        // {
+        //     match
+        // }
     }
+
+    pub trait IntoResult<'a, T> {
+        fn into(self) -> Result<'a, T>;
+    }
+
+    impl<'a, T: fmt::Debug> IntoResult<'a, T>
+        for std::result::Result<T, (Input<'a>, Input<'a>, String)>
+    {
+        fn into(self) -> Result<'a, T> {
+            let (original_input, input, msg) = self.expect_err("why was this called with an Ok()?");
+            Error::custom_slice(original_input, input, msg)
+        }
+    }
+
+    // impl<'a, T> From<std::result::Result<T, (Input<'a>, Input<'a>, String)>> for Error<Input<'a>>
+    // impl<'a, T, U> From<std::result::Result<T, (Input<'a>, Input<'a>, String)>> for Result<'a, U>
+    // where
+    //     T: std::fmt::Debug,
+    // {
+    //     fn from(result: std::result::Result<T, (Input<'a>, Input<'a>, String)>) -> Self {
+    //         let (original_input, input, msg) =
+    //             result.expect_err("why was this called with an Ok()?");
+    //         Error::custom_slice(original_input, input, msg)
+    //     }
+    // }
 
     impl<I> NomParseError<I> for Error<I> {
         fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
@@ -159,67 +206,41 @@ mod errors {
             Ok(())
         }
     }
+
+    #[macro_export]
+    macro_rules! handle {
+        ($result:expr, $original_input:expr, $input:expr, $msg_func:expr) => {
+            match $result {
+                Ok(val) => val,
+                Err(err) => {
+                    let msg = $msg_func(err);
+                    return Error::custom_slice($original_input, $input, msg);
+                }
+            }
+        };
+    }
 }
 
 mod primitives {
     use super::errors::{Error, Input, Result};
+    use crate::handle;
     use nom::error::context;
     use nom::number::complete::be_u8;
+    use std::convert::TryFrom;
 
-    // pub struct VarInt();
+    pub trait Parse<T> {
+        fn parse(input: Input) -> Result<T>;
+    }
 
-    // impl VarInt {
-    //     pub fn parse(mut input: Input) -> Result<i32> {
-    //         let original_input = input;
-
-    //         let mut bytes_read = 0u8;
-    //         let mut result = 0i32;
-    //         loop {
-    //             let (rest, read) = context("VarInt byte", be_u8)(input)?;
-    //             input = rest;
-
-    //             let mut temp = (read & 0b01111111) as i32;
-    //             result |= temp << (7 * bytes_read);
-
-    //             bytes_read += 1;
-
-    //             if read & 0b10000000 == 0 {
-    //                 break;
-    //             }
-
-    //             if bytes_read >= 5 {
-    //                 let msg = format!(
-    //                     "varint must finish within 5 bytes, got 0x{0:02x} 0b{0:08b} instead",
-    //                     read
-    //                 );
-
-    //                 use nom::Offset;
-    //                 let err_slice = &original_input[..original_input.offset(input)];
-
-    //                 return Error::custom(err_slice, msg);
-    //             }
-    //         }
-
-    //         Ok((input, result))
-    //     }
-    // }
-
-    // trait VarNumType {
-    //     // type NumType;
-    //     fn max_size() -> u8;
-    // }
-
-    // impl VarNumType for i32 {
-    //     fn max_size() -> u8 {
-    //         5
-    //     }
-    // }
+    pub trait ParseB<T: ?Sized> {
+        fn parse<'a>(input: Input<'a>) -> Result<&'a T>;
+    }
 
     macro_rules! var_num {
         ($name:ident => ($type:ty, $size:expr)) => {
             pub struct $name();
-            impl $name {
-                pub fn parse(mut input: Input) -> Result<$type> {
+            impl Parse<$type> for $name {
+                fn parse(mut input: Input) -> Result<$type> {
                     let original_input = input;
                     let mut bytes_read = 0u8;
                     let mut result: $type = 0;
@@ -243,12 +264,35 @@ mod primitives {
                                 ),
                                 read
                             );
-                            use nom::Offset;
-                            let err_slice = &original_input[..original_input.offset(input)];
-                            return Error::custom(err_slice, msg);
+                            return Error::custom_slice(original_input, input, msg);
                         }
                     }
                     Ok((input, result))
+                }
+            }
+
+            impl $name {
+                fn parse_as_usize(input: Input) -> Result<usize> {
+                    let original_input = input;
+                    let (input, num) = <$name as Parse<$type>>::parse(input)?;
+
+                    let num = handle!(usize::try_from(num), original_input, input, |_| format!(
+                        concat!(stringify!($type), " {} cannot fit in usize"),
+                        num
+                    ));
+
+                    // let num = match usize::try_from(num) {
+                    //     Ok(num) => num,
+                    //     Err(_) => {
+                    //         return Error::custom_slice(
+                    //             original_input,
+                    //             input,
+                    //             format!(concat!(stringify!($type), " {} cannot fit in usize"), num),
+                    //         )
+                    //     }
+                    // };
+
+                    Ok((input, num))
                 }
             }
         };
@@ -256,12 +300,26 @@ mod primitives {
 
     var_num!(VarInt => (i32, 5));
     var_num!(VarLong => (i64, 10));
+
+    impl ParseB<str> for String {
+        fn parse<'a>(input: Input<'a>) -> Result<&'a str> {
+            let original_input = input;
+            let (input, len) = VarInt::parse_as_usize(input)?;
+            let text = handle!(
+                std::str::from_utf8(&input[..len]),
+                original_input,
+                input,
+                |err| format!("{}", err)
+            );
+            Ok((input, text))
+        }
+    }
 }
 
-use primitives::VarInt;
+use primitives::{Parse, VarInt};
 
 fn main() {
     dbg!(VarInt::parse(&[
-        0b10000000, 0b10000000, 0b10000000, 0b10000000 //, 0b10011111,
+        0b10000000, 0b10000000, 0b10000000, 0b10000000, 0b0011111,
     ]));
 }
