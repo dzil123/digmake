@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::net::{TcpListener, TcpStream};
 
-fn handle_client(mut stream: TcpStream) {
+fn handle_client(stream: TcpStream) {
     dbg!(&stream);
 
     // let mut result = vec![];

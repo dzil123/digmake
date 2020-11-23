@@ -1,22 +1,15 @@
 #![allow(
-    // unused_imports,
-    dead_code,
-    unreachable_code,
-    unused_variables,
-    unused_mut
+    unused_imports,
+//     dead_code,
+//     unreachable_code,
+//     unused_variables,
+//     unused_mut
 )]
 
 static DATA: [u8; 19] = [
     0x10, 0x00, 0xf2, 0x05, 0x09, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x68, 0x6f, 0x73, 0x74, 0x63, 0xdd,
     0x01, 0x01, 0x00,
 ];
-
-// use nom::combinator::map;
-// use nom::combinator::map_res;
-
-// use nom::number::streaming::be_u16;
-// use nom::number::streaming::be_u8;
-// use nom::{bytes, character, Err, IResult, Needed};
 
 mod errors {
     use nom::error::ContextError;
@@ -207,6 +200,7 @@ mod errors {
         }
     }
 
+    // macro to convert std::Result<T, E> to either T or Result<'a, U>, as a replacement for the ? operator
     #[macro_export]
     macro_rules! handle {
         ($result:expr, $original_input:expr, $input:expr, $msg_func:expr) => {
@@ -224,6 +218,7 @@ mod errors {
 mod primitives {
     use super::errors::{Error, Input, Result};
     use crate::handle;
+    use nom::bytes::complete::take;
     use nom::error::context;
     use nom::number::complete::be_u8;
     use std::convert::TryFrom;
@@ -236,10 +231,12 @@ mod primitives {
         fn parse<'a>(input: Input<'a>) -> Result<&'a T>;
     }
 
+    // shared impl for variable length numbers, VarInt and VarLong
     macro_rules! var_num {
         ($name:ident => ($type:ty, $size:expr)) => {
             pub struct $name();
             impl Parse<$type> for $name {
+                #[allow(dead_code)]
                 fn parse(mut input: Input) -> Result<$type> {
                     let original_input = input;
                     let mut bytes_read = 0u8;
@@ -248,7 +245,7 @@ mod primitives {
                         let (rest, read) =
                             context(concat!(stringify!($name), " byte"), be_u8)(input)?;
                         input = rest;
-                        let mut temp = (read & 0b01111111) as $type;
+                        let temp = (read & 0b01111111) as $type;
                         result |= temp << (7 * bytes_read);
                         bytes_read += 1;
                         if read & 0b10000000 == 0 {
@@ -272,6 +269,7 @@ mod primitives {
             }
 
             impl $name {
+                #[allow(dead_code)]
                 fn parse_as_usize(input: Input) -> Result<usize> {
                     let original_input = input;
                     let (input, num) = <$name as Parse<$type>>::parse(input)?;
@@ -280,17 +278,6 @@ mod primitives {
                         concat!(stringify!($type), " {} cannot fit in usize"),
                         num
                     ));
-
-                    // let num = match usize::try_from(num) {
-                    //     Ok(num) => num,
-                    //     Err(_) => {
-                    //         return Error::custom_slice(
-                    //             original_input,
-                    //             input,
-                    //             format!(concat!(stringify!($type), " {} cannot fit in usize"), num),
-                    //         )
-                    //     }
-                    // };
 
                     Ok((input, num))
                 }
@@ -303,10 +290,11 @@ mod primitives {
 
     impl ParseB<str> for String {
         fn parse<'a>(input: Input<'a>) -> Result<&'a str> {
+            let (input, len) = context("string length", VarInt::parse_as_usize)(input)?;
             let original_input = input;
-            let (input, len) = VarInt::parse_as_usize(input)?;
+            let (input, data) = context("string content", take(len))(input)?;
             let text = handle!(
-                std::str::from_utf8(&input[..len]),
+                std::str::from_utf8(data),
                 original_input,
                 input,
                 |err| format!("{}", err)
@@ -314,12 +302,45 @@ mod primitives {
             Ok((input, text))
         }
     }
+
+    impl Parse<bool> for bool {
+        fn parse(input: Input) -> Result<bool> {
+            let original_input = input;
+            let (input, byte) = context("bool", take(1u8))(input)?;
+
+            let result = match byte[0] {
+                0x00 => false,
+                0x01 => true,
+                invalid => {
+                    return Error::custom_slice(
+                        original_input,
+                        input,
+                        format!("0x{:02x} not valid bool", invalid),
+                    )
+                }
+            };
+
+            Ok((input, result))
+        }
+    }
 }
 
-use primitives::{Parse, VarInt};
+use nom::bytes::complete::take;
+use nom::multi::{count, many0};
+use nom::number::complete::be_u16;
+use nom::sequence::tuple;
+use nom::Finish;
+use primitives::{Parse, ParseB, VarInt};
+// use ToUSize;
 
 fn main() {
-    dbg!(VarInt::parse(&[
-        0b10000000, 0b10000000, 0b10000000, 0b10000000, 0b0011111,
-    ]));
+    #![allow(unused_must_use)]
+    dbg!(tuple((
+        take(2usize),
+        VarInt::parse,
+        String::parse,
+        be_u16,
+        VarInt::parse,
+        take(2usize),
+    ))(&DATA[..]));
 }
