@@ -40,19 +40,6 @@ impl<'a> Error<Input<'a>> {
     }
 }
 
-// pub trait IntoResult<'a, T> {
-//     fn into(self) -> Result<'a, T>;
-// }
-
-// impl<'a, T: fmt::Debug> IntoResult<'a, T>
-//     for std::result::Result<T, (Input<'a>, Input<'a>, String)>
-// {
-//     fn into(self) -> Result<'a, T> {
-//         let (original_input, input, msg) = self.expect_err("why was this called with an Ok()?");
-//         Error::custom_slice(original_input, input, msg)
-//     }
-// }
-
 impl<I> NomParseError<I> for Error<I> {
     fn from_error_kind(input: I, kind: NomErrorKind) -> Self {
         let errors = vec![(input, ErrorKind::Nom(kind))];
@@ -77,6 +64,7 @@ impl<I> ContextError<I> for Error<I> {
     }
 }
 
+// stolen from https://fasterthanli.me/series/making-our-own-ping/part-9
 impl<'a> fmt::Debug for Error<Input<'a>> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "/!\\ parsing error\n")?;
@@ -163,7 +151,6 @@ impl<'a> fmt::Debug for Error<Input<'a>> {
 }
 
 // macro to convert std::Result<T, E> to either T or Result<'a, U>, as a replacement for the ? operator
-#[macro_export]
 macro_rules! handle {
     ($result:expr, $original_input:expr, $input:expr, $msg_func:expr) => {
         match $result {

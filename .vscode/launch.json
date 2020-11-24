@@ -1,0 +1,138 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'digmake'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "digmake",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'digmake'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=digmake",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "digmake",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'digmake'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=digmake",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "digmake",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'deserial'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=deserial",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "deserial",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'deserial'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=deserial",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "deserial",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'network'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=network",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "network",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'network'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=network",
+                    "--package=digmake"
+                ],
+                "filter": {
+                    "name": "network",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

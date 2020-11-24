@@ -1,4 +1,1 @@
-mod edres;
-mod mon;
-
-pub fn foo() {}
+pub mod se;

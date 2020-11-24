@@ -1,4 +1,10 @@
+use super::varint;
 use super::{error::err, Error, Result};
+use crate::se::{
+    mon::{Parse, ParseB, Result as MonResult},
+    VarInt, VarLong,
+};
+use nom::number::complete as nom_num;
 use serde::de::{
     DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor,
 };
@@ -6,16 +12,13 @@ use serde::Deserialize;
 use serde::{de, ser};
 use std::fmt::{self, Display};
 
-use crate::mon::{Parse, ParseB, Result as MonResult, VarInt, VarLong};
-use nom::number::complete as nom_num;
-
-struct Deserializer<'de> {
+pub(super) struct Deserializer<'de> {
     original_input: &'de [u8],
     input: &'de [u8],
 }
 
 impl<'de> Deserializer<'de> {
-    fn new(input: &'de [u8]) -> Self {
+    pub(super) fn new(input: &'de [u8]) -> Self {
         Self {
             original_input: input,
             input,
@@ -224,6 +227,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        if name == varint::VARINT_NAME && fields == [varint::VARINT_FIELD] {
+            let value = self.update(VarInt::parse(self.input)?);
+            return visitor.visit_map(varint::VarIntDeserializer::new(value));
+        }
+
         dbg!(name, fields);
         // self.deserialize_map(visitor)
         self.deserialize_seq(visitor)
@@ -253,6 +261,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         self.deserialize_any(visitor)
+    }
+
+    #[inline]
+    fn is_human_readable(&self) -> bool {
+        false
     }
 }
 

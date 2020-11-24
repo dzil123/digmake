@@ -1,5 +1,5 @@
 use super::errors::{Error, Input, Result};
-use crate::handle;
+use crate::se::{VarInt, VarLong};
 use nom::bytes::complete::take;
 use nom::error::context;
 use nom::number::complete::be_u8;
@@ -16,7 +16,6 @@ pub trait ParseB<T: ?Sized> {
 // shared impl for variable length numbers, VarInt and VarLong
 macro_rules! var_num {
     ($name:ident => ($type:ty, $size:expr)) => {
-        pub struct $name($type);
         impl Parse<$type> for $name {
             #[allow(dead_code)]
             fn parse(mut input: Input) -> Result<$type> {
@@ -80,6 +79,9 @@ impl ParseB<str> for String {
             input,
             |err| format!("{}", err)
         );
+        // let (input, text) = map_res(context("string content", take(len)), |data| {
+        //     std::str::from_utf8(data)
+        // })(input)?;
         Ok((input, text))
     }
 }
