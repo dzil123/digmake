@@ -1,31 +1,32 @@
-use super::varint;
-use super::{error::err, Error, Result};
+use super::{error::err, varint, Error, Result};
 use crate::se::{
-    mon::{Parse, ParseB, Result as MonResult},
-    VarInt, VarLong,
+    mon::{Parse, ParseB},
+    Input, VarInt, VarLong,
 };
 use nom::number::complete as nom_num;
-use serde;
-use serde::de::{
-    DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor, Deserializer as SDeserializer
+use serde::{
+    self,
+    de::{
+        DeserializeSeed, Deserializer as SDeserializer, EnumAccess, SeqAccess, VariantAccess,
+        Visitor,
+    },
 };
-use serde::Deserialize;
-use std::fmt::{self, Display};
 
 pub(super) struct Deserializer<'de> {
-    original_input: &'de [u8],
-    input: &'de [u8],
+    #[allow(dead_code)]
+    pub(super) original_input: Input<'de>,
+    pub(super) input: Input<'de>,
 }
 
 impl<'de> Deserializer<'de> {
-    pub(super) fn new(input: &'de [u8]) -> Self {
+    pub(super) fn new(input: Input<'de>) -> Self {
         Self {
             original_input: input,
             input,
         }
     }
 
-    fn update<T>(&mut self, parsed: (&'de [u8], T)) -> T {
+    fn update<T>(&mut self, parsed: (Input<'de>, T)) -> T {
         self.input = parsed.0;
         parsed.1
     }
@@ -157,14 +158,19 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        err("cannot deserialize option")
+        let is_some = self.update(bool::parse(self.input)?);
+        if is_some {
+            visitor.visit_some(self)
+        } else {
+            visitor.visit_none()
+        }
     }
 
     fn deserialize_unit<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        err("cannot deserialize unit")
+        visitor.visit_unit()
     }
 
     fn deserialize_unit_struct<V>(self, _name: &'static str, visitor: V) -> Result<V::Value>
@@ -230,7 +236,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
             return visitor.visit_map(varint::VarIntDeserializer::new(value));
         }
 
-        dbg!(name, fields);
+        // dbg!(name, fields);
         // self.deserialize_map(visitor)
         self.deserialize_seq(visitor)
     }
@@ -244,6 +250,11 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        // dbg!(
+        //     "alfa",
+        //     std::any::type_name::<V>(),
+        //     std::any::type_name::<V::Value>()
+        // );
         visitor.visit_enum(self)
         // visitor.visit_enum(*self)
     }
@@ -252,7 +263,12 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_str(visitor)
+        // called by enum visitor derive to determine descriminant
+        //   (from std::mem::discriminant()) (afaict sequential u64)
+        // implement by reading one byte (upcast to u64):
+        // will work for enums with underlying type bool, u8, varint (0 <= x < 128)
+        // otherwise, idk how to do this
+        self.deserialize_u8(visitor)
     }
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
@@ -268,60 +284,60 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     }
 }
 
-// impl<'de> SeqAccess<'de> for Deserializer<'de> {
-//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
+impl<'de> SeqAccess<'de> for Deserializer<'de> {
+    type Error = <&'de mut Self as SDeserializer<'de>>::Error;
 
-//     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
-//     where
-//         T: DeserializeSeed<'de>,
-//     {
-//         if self.input.len() == 0 {
-//             return Ok(None);
-//         }
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        // dbg!(
+        //     "bravo",
+        //     std::any::type_name::<T>(),
+        //     std::any::type_name::<T::Value>()
+        // );
 
-//         seed.deserialize(self).map(Some)
-//     }
-// }
+        if self.input.len() == 0 {
+            return Ok(None);
+        }
+
+        seed.deserialize(self).map(Some)
+    }
+}
 
 impl<'de, 'a> EnumAccess<'de> for &'a mut Deserializer<'de> {
-    type Error = <Self as serde::Deserializer<'de>>::Error;
+    type Error = <Self as SDeserializer<'de>>::Error;
     type Variant = Self;
 
     fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
     where
         V: DeserializeSeed<'de>,
     {
-        seed.deserialize(self).map(|val| (val, self))
+        // dbg!(
+        //     "charlie",
+        //     std::any::type_name::<V>(),
+        //     std::any::type_name::<V::Value>()
+        // );
+        seed.deserialize(&mut *self).map(|val| (val, self))
     }
 }
 
-// impl<'de> EnumAccess<'de> for Deserializer<'de> {
-//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
-//     type Variant = Self;
-
-//     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
-//     where
-//         V: DeserializeSeed<'de>,
-//     {
-//         seed.deserialize(&mut self).map(|val| (val, self))
-//     }
-// }
-
-/*
-enum Foo {
-    One,
-    Two(),
-    Three(T),
-    Four(U, V),
-    Five { val: W },
-}
-*/
-
 impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
-    type Error = <Self as serde::Deserializer<'de>>::Error;
+    type Error = <Self as SDeserializer<'de>>::Error;
+
+    /*
+    enum Foo {
+        One,
+        Two(),
+        Three(T),
+        Four(U, V),
+        Five { val: W },
+    }
+    */
 
     // Handles Foo::One
     fn unit_variant(self) -> Result<()> {
+        // dbg!("delta");
         Ok(())
     }
 
@@ -330,6 +346,11 @@ impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
     where
         T: DeserializeSeed<'de>,
     {
+        // dbg!(
+        //     "echo",
+        //     std::any::type_name::<T>(),
+        //     std::any::type_name::<T::Value>()
+        // );
         seed.deserialize(self)
     }
 
@@ -338,6 +359,11 @@ impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        // dbg!(
+        //     "foxtrot",
+        //     std::any::type_name::<V>(),
+        //     std::any::type_name::<V::Value>()
+        // );
         self.deserialize_seq(visitor)
     }
 
@@ -346,39 +372,11 @@ impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
+        // dbg!(
+        //     "golf",
+        //     std::any::type_name::<V>(),
+        //     std::any::type_name::<V::Value>()
+        // );
         self.deserialize_seq(visitor)
     }
 }
-
-// impl<'de> VariantAccess<'de> for Deserializer<'de> {
-//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
-
-//     // Handles Foo::One
-//     fn unit_variant(self) -> Result<()> {
-//         Ok(())
-//     }
-
-//     // Handles Foo::Three
-//     fn newtype_variant_seed<T>(mut self, seed: T) -> Result<T::Value>
-//     where
-//         T: DeserializeSeed<'de>,
-//     {
-//         seed.deserialize(&mut self)
-//     }
-
-//     // Handles Foo::{ Two, Four }
-//     fn tuple_variant<V>(mut self, _len: usize, visitor: V) -> Result<V::Value>
-//     where
-//         V: Visitor<'de>,
-//     {
-//         self.deserialize_seq(visitor)
-//     }
-
-//     // Handles Foo::Five
-//     fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
-//     where
-//         V: Visitor<'de>,
-//     {
-//         self.deserialize_seq(visitor)
-//     }
-// }

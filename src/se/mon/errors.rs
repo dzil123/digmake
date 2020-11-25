@@ -1,8 +1,7 @@
-use nom::error::ContextError;
-use nom::error::{ErrorKind as NomErrorKind, ParseError as NomParseError};
+use nom::error::{ContextError, ErrorKind as NomErrorKind, ParseError as NomParseError};
 use std::fmt;
 
-pub type Input<'a> = &'a [u8];
+use crate::se::Input;
 pub type Result<'a, T> = nom::IResult<Input<'a>, T, Error<Input<'a>>>;
 
 #[derive(Debug)]

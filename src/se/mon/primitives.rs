@@ -1,8 +1,6 @@
-use super::errors::{Error, Input, Result};
-use crate::se::{VarInt, VarLong};
-use nom::bytes::complete::take;
-use nom::error::context;
-use nom::number::complete::be_u8;
+use super::errors::{Error, Result};
+use crate::se::{Input, VarInt, VarLong};
+use nom::{bytes::complete::take, error::context, number::complete::be_u8};
 use std::convert::TryFrom;
 
 pub trait Parse<T> {
@@ -94,13 +92,14 @@ impl Parse<bool> for bool {
         let result = match byte[0] {
             0x00 => false,
             0x01 => true,
-            invalid => {
-                return Error::custom_slice(
-                    original_input,
-                    input,
-                    format!("0x{:02x} not valid bool", invalid),
-                )
-            }
+            // invalid => {
+            //     return Error::custom_slice(
+            //         original_input,
+            //         input,
+            //         format!("0x{:02x} not valid bool", invalid),
+            //     )
+            // }
+            _ => true, // forgive me for i have sinned
         };
 
         Ok((input, result))
