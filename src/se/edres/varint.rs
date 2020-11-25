@@ -26,6 +26,8 @@ impl<'de> de::Deserialize<'de> for VarInt {
             where
                 V: de::MapAccess<'de>,
             {
+                dbg!("VarInt MapAccess", std::any::type_name::<V>());
+
                 let value = visitor.next_key::<VarIntKey>()?;
                 if value.is_none() {
                     return Err(de::Error::custom("VarInt key not found"));
@@ -38,9 +40,12 @@ impl<'de> de::Deserialize<'de> for VarInt {
             where
                 E: serde::de::Error,
             {
+                dbg!("VarInt Error", std::any::type_name::<E>());
+
                 Ok(VarInt(v))
             }
         }
+        dbg!("VarInt Deserializer", std::any::type_name::<D>());
 
         static FIELDS: [&str; 1] = [VARINT_FIELD];
         deserializer.deserialize_struct(VARINT_NAME, &FIELDS, VarIntVisitor)
@@ -60,13 +65,14 @@ impl<'de> de::Deserialize<'de> for VarIntKey {
             type Value = ();
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                formatter.write_str("a valid datetime field")
+                formatter.write_str("a valid i32 VarInt 1-5 bytes")
             }
 
             fn visit_str<E>(self, s: &str) -> Result<(), E>
             where
                 E: de::Error,
             {
+                dbg!("VarIntKey Deserializer 2", std::any::type_name::<E>());
                 if s == VARINT_FIELD {
                     Ok(())
                 } else {
@@ -74,6 +80,7 @@ impl<'de> de::Deserialize<'de> for VarIntKey {
                 }
             }
         }
+        dbg!("VarIntKey Deserializer", std::any::type_name::<D>());
 
         deserializer.deserialize_identifier(FieldVisitor)?;
         Ok(VarIntKey)
@@ -101,6 +108,10 @@ impl<'de> de::MapAccess<'de> for VarIntDeserializer {
     where
         K: de::DeserializeSeed<'de>,
     {
+        dbg!(
+            "VarIntDeserializer DeserializeSeed",
+            std::any::type_name::<K>()
+        );
         if self.visited {
             return Ok(None);
         }
@@ -112,6 +123,10 @@ impl<'de> de::MapAccess<'de> for VarIntDeserializer {
     where
         V: de::DeserializeSeed<'de>,
     {
+        dbg!(
+            "VarIntDeserializer DeserializeSeed 2",
+            std::any::type_name::<V>()
+        );
         seed.deserialize(VarIntContentsDeserializer(self.value))
     }
 }
@@ -125,6 +140,10 @@ impl<'de> de::Deserializer<'de> for VarIntFieldDeserializer {
     where
         V: de::Visitor<'de>,
     {
+        dbg!(
+            "VarIntFieldDeserializer Visitor",
+            std::any::type_name::<V>()
+        );
         visitor.visit_borrowed_str(VARINT_FIELD)
     }
 
@@ -144,7 +163,10 @@ impl<'de> de::Deserializer<'de> for VarIntContentsDeserializer {
     where
         V: de::Visitor<'de>,
     {
-        dbg!(std::any::type_name::<V>());
+        dbg!(
+            "VarIntContentsDeserializer Visitor",
+            std::any::type_name::<V>()
+        );
         visitor.visit_i32(self.0)
     }
 

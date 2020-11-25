@@ -5,11 +5,11 @@ use crate::se::{
     VarInt, VarLong,
 };
 use nom::number::complete as nom_num;
+use serde;
 use serde::de::{
-    DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor,
+    DeserializeSeed, EnumAccess, IntoDeserializer, MapAccess, SeqAccess, VariantAccess, Visitor, Deserializer as SDeserializer
 };
 use serde::Deserialize;
-use serde::{de, ser};
 use std::fmt::{self, Display};
 
 pub(super) struct Deserializer<'de> {
@@ -31,7 +31,7 @@ impl<'de> Deserializer<'de> {
     }
 }
 
-impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
+impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     type Error = Error;
 
     fn deserialize_any<V>(self, _visitor: V) -> Result<V::Value>
@@ -181,13 +181,11 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
+    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        // err("cannot deserialize sequence")
-        let x = visitor.visit_seq(MapAccesser { de: &mut self })?;
-        Ok(x)
+        visitor.visit_seq(self)
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
@@ -246,7 +244,8 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        err("cannot deserialize enum")
+        visitor.visit_enum(self)
+        // visitor.visit_enum(*self)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
@@ -269,22 +268,117 @@ impl<'de, 'a> de::Deserializer<'de> for &'a mut Deserializer<'de> {
     }
 }
 
-struct MapAccesser<'a, 'de: 'a> {
-    de: &'a mut Deserializer<'de>,
+// impl<'de> SeqAccess<'de> for Deserializer<'de> {
+//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
+
+//     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+//     where
+//         T: DeserializeSeed<'de>,
+//     {
+//         if self.input.len() == 0 {
+//             return Ok(None);
+//         }
+
+//         seed.deserialize(self).map(Some)
+//     }
+// }
+
+impl<'de, 'a> EnumAccess<'de> for &'a mut Deserializer<'de> {
+    type Error = <Self as serde::Deserializer<'de>>::Error;
+    type Variant = Self;
+
+    fn variant_seed<V>(self, seed: V) -> Result<(V::Value, Self::Variant)>
+    where
+        V: DeserializeSeed<'de>,
+    {
+        seed.deserialize(self).map(|val| (val, self))
+    }
 }
 
-impl<'de, 'a> SeqAccess<'de> for MapAccesser<'a, 'de> {
-    type Error = Error;
+// impl<'de> EnumAccess<'de> for Deserializer<'de> {
+//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
+//     type Variant = Self;
 
-    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+//     fn variant_seed<V>(mut self, seed: V) -> Result<(V::Value, Self::Variant)>
+//     where
+//         V: DeserializeSeed<'de>,
+//     {
+//         seed.deserialize(&mut self).map(|val| (val, self))
+//     }
+// }
+
+/*
+enum Foo {
+    One,
+    Two(),
+    Three(T),
+    Four(U, V),
+    Five { val: W },
+}
+*/
+
+impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
+    type Error = <Self as serde::Deserializer<'de>>::Error;
+
+    // Handles Foo::One
+    fn unit_variant(self) -> Result<()> {
+        Ok(())
+    }
+
+    // Handles Foo::Three
+    fn newtype_variant_seed<T>(self, seed: T) -> Result<T::Value>
     where
         T: DeserializeSeed<'de>,
     {
-        // Check if there are no more elements.
-        if self.de.input.len() == 0 {
-            return Ok(None);
-        }
-        // Deserialize an array element.
-        seed.deserialize(&mut *self.de).map(Some)
+        seed.deserialize(self)
+    }
+
+    // Handles Foo::{ Two, Four }
+    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
+    }
+
+    // Handles Foo::Five
+    fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        self.deserialize_seq(visitor)
     }
 }
+
+// impl<'de> VariantAccess<'de> for Deserializer<'de> {
+//     type Error = <&'de mut Self as serde::Deserializer<'de>>::Error;
+
+//     // Handles Foo::One
+//     fn unit_variant(self) -> Result<()> {
+//         Ok(())
+//     }
+
+//     // Handles Foo::Three
+//     fn newtype_variant_seed<T>(mut self, seed: T) -> Result<T::Value>
+//     where
+//         T: DeserializeSeed<'de>,
+//     {
+//         seed.deserialize(&mut self)
+//     }
+
+//     // Handles Foo::{ Two, Four }
+//     fn tuple_variant<V>(mut self, _len: usize, visitor: V) -> Result<V::Value>
+//     where
+//         V: Visitor<'de>,
+//     {
+//         self.deserialize_seq(visitor)
+//     }
+
+//     // Handles Foo::Five
+//     fn struct_variant<V>(mut self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
+//     where
+//         V: Visitor<'de>,
+//     {
+//         self.deserialize_seq(visitor)
+//     }
+// }
