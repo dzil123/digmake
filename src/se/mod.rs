@@ -1,8 +1,10 @@
 mod edres;
 mod mon;
-mod shared;
+mod packet;
+mod types;
 
 pub use edres::{from_bytes, from_bytes_debug};
-pub use shared::{VarInt, VarLong};
+use packet::Packet;
+pub use types::{Position, VarInt, VarLong};
 
 pub type Input<'a> = &'a [u8];

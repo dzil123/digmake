@@ -17,3 +17,4 @@ path = "src/main.rs"
 [dependencies]
 nom = { version = "6.0.0", features = ["alloc"] }
 serde = { version = "1.0.117", features = ["derive"] }
+uuid = "0.8.1"

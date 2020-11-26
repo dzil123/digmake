@@ -1,5 +1,7 @@
 mod tests;
 
 fn main() {
-    tests::test_optional();
+    tests::test_uuid();
 }
+
+// todo: add eof to serde error enum

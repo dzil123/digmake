@@ -77,6 +77,13 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_i64(self.update(nom_num::be_i64(self.input)?))
     }
 
+    fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_i128(self.update(nom_num::be_i128(self.input)?))
+    }
+
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
@@ -103,6 +110,13 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         visitor.visit_u64(self.update(nom_num::be_u64(self.input)?))
+    }
+
+    fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_u128(self.update(nom_num::be_u128(self.input)?))
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>

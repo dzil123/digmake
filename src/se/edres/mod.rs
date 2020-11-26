@@ -1,6 +1,8 @@
 mod de;
 mod error;
+mod packet;
 mod ser;
+mod types;
 mod varint;
 
 use crate::se::Input;

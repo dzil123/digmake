@@ -107,3 +107,76 @@ pub fn test_optional() {
             ([], Ok(Packet { widgets: Some(17476) }))
     */
 }
+
+pub fn test_Position() {
+    use digmake::se::Position;
+
+    let DATA = vec![
+        // x i26                               | z 26
+        0b00000000, 0b00000000, 0b00000000, 0b00100000,
+        //                           | y 12
+        0b00000000, 0b00000000, 0b00000000, 0b00000000,
+    ];
+
+    let data = from_bytes_debug::<Position>(&DATA);
+    dbg!(&data);
+    dbg!(data.1.unwrap());
+}
+
+pub fn test_bytearry() {
+    let DATA = vec![63, 231, 92, 12];
+
+    let data = from_bytes_debug::<&[u8]>(&DATA);
+    dbg!(&data);
+    dbg!(data.1.unwrap());
+}
+
+pub fn test_uuid() {
+    use serde::{self, Deserialize};
+
+    #[derive(Deserialize)]
+    #[serde(remote = "uuid::Uuid")]
+    struct Uuid(
+        #[serde(getter = "uuid::Uuid::as_bytes")] [u8; 16], //
+    );
+
+    impl From<Uuid> for uuid::Uuid {
+        fn from(uuid: Uuid) -> Self {
+            Self::from_bytes(uuid.0)
+        }
+    }
+
+    #[derive(Deserialize, Debug)]
+    struct Struct {
+        #[serde(with = "Uuid")]
+        value: uuid::Uuid,
+    }
+
+    let DATA = vec![
+        63, 231, 92, 12, //
+        63, 231, 92, 12, //
+        63, 231, 92, 12, //
+        63, 231, 92, 12,
+    ];
+
+    let data = from_bytes_debug::<Struct>(&DATA);
+    dbg!(&data);
+    dbg!(data.1.unwrap());
+}
+
+/*
+pub fn test_varint() {
+    use serde::{self, Deserialize};
+
+    #[derive(Deserialize)]
+    struct VarInt {
+        foo: i8,
+    }
+
+    #[derive(Deserialize)]
+    struct Struct {
+        #[serde(with = "VarInt")]
+        value: i32,
+    }
+}
+*/
