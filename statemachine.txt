@@ -1,0 +1,31 @@
+States:
+    Handshaking
+        receive 0x00 packet
+            read handshake packet
+            match next_state
+                status(1)
+                    set state Status
+                login(2)
+                    set state Login
+    State
+        receive 0x00 packet
+            read Request packet (empty)
+            send Response packet (json)
+        receive 0x01 packet
+            read Ping packet
+            send Pong packet (0x01) with same payload
+            close connection
+    Login
+        receive 0x00 packet
+            read LoginStart packet
+            send LoginSuccess packet
+            set state Play
+    Play
+    
+    to send disconnect packet: 0x19
+    keepalives smh
+
+https://github.com/rustic-games/sm/blob/master/README.md
+https://github.com/andrewtc/mode
+https://github.com/rust-bakery/machine
+
