@@ -1,13 +1,12 @@
 mod de;
-mod error;
-mod packet;
+pub mod error;
 mod ser;
 mod types;
 mod varint;
 
+use crate::se::error::Result;
 use crate::se::Input;
 use de::Deserializer;
-pub use error::{Error, Result};
 use serde::Deserialize;
 
 pub fn from_bytes<'de, T>(input: Input<'de>) -> Result<T>

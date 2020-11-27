@@ -1,7 +1,5 @@
-use super::error::Error;
-use crate::se::{Position, VarInt, VarLong};
+use crate::se::Position;
 use serde::de;
-use uuid::Uuid;
 
 impl<'de> de::Deserialize<'de> for Position {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -30,12 +28,3 @@ impl<'de> de::Deserialize<'de> for Position {
         Ok(Position { x, y, z })
     }
 }
-
-// impl<'de> de::Deserialize<'de> for Uuid {
-//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-//     where
-//         D: de::Deserializer<'de>,
-//     {
-//         let data = u64::deserialize(deserializer)?;
-//     }
-// }

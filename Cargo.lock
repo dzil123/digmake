@@ -36,6 +36,7 @@ version = "0.1.0"
 dependencies = [
  "nom",
  "serde",
+ "thiserror",
  "uuid",
 ]
 
@@ -66,9 +67,9 @@ checksum = "0ee1c47aaa256ecabcaea351eae4a9b01ef39ed810004e298d2511ed284b1525"
 
 [[package]]
 name = "nom"
-version = "6.0.0"
+version = "6.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4489ccc7d668957ddf64af7cd027c081728903afa6479d35da7e99bf5728f75f"
+checksum = "88034cfd6b4a0d54dd14f4a507eceee36c0b70e5a02236c4e4df571102be17f0"
 dependencies = [
  "bitvec",
  "lexical-core",
@@ -134,9 +135,9 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "syn"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "443b4178719c5a851e1bde36ce12da21d74a0e60b4d982ec3385a933c812f0f6"
+checksum = "3b4f34193997d92804d359ed09953e25d5138df6bcc055a71bf68ee89fdf9223"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -148,6 +149,26 @@ name = "tap"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36474e732d1affd3a6ed582781b3683df3d0563714c59c39591e8ff707cf078e"
+
+[[package]]
+name = "thiserror"
+version = "1.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e9ae34b84616eedaaf1e9dd6026dbe00dcafa92aa0c8077cb69df1fcfe5e53e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ba20f23e85b10754cd195504aebf6a27e2e6cbe28c17778a0c930724628dd56"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "unicode-xid"

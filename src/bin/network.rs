@@ -28,7 +28,7 @@ fn handle_client(stream: TcpStream) {
 fn handle_client2(mut stream: TcpStream) {
     // stream.set_nonblocking(true).unwrap();
     stream
-        .set_read_timeout(Some(Duration::from_millis(50)))
+        .set_read_timeout(Some(Duration::from_millis(1000)))
         .unwrap();
 
     let time = Duration::from_millis(100);
@@ -38,9 +38,10 @@ fn handle_client2(mut stream: TcpStream) {
     loop {
         match stream.read(std::slice::from_mut(&mut byte)) {
             Ok(value) => match value {
-                0 => println!("closed"),
+                0 => println!("closed - read 0 bytes"),
                 1 => println!("0x{0:02x}  0b{0:08b}  {0:}", byte),
                 x => println!("how how {} {}", x, byte),
+                // let x = [0u8; size_length];
             },
             Err(err) => {
                 println!("Error: {:?}", err);
@@ -48,7 +49,7 @@ fn handle_client2(mut stream: TcpStream) {
         }
         match stream.peek(std::slice::from_mut(&mut byte)) {
             Ok(value) => match value {
-                0 => println!("  closed"),
+                0 => println!("  closed - read 0 bytes"),
                 1 => println!("  0x{0:02x}  0b{0:08b}  {0:}", byte),
                 x => println!("  how how {} {}", x, byte),
             },
@@ -111,7 +112,7 @@ fn main() -> std::io::Result<()> {
 
     // accept connections and process them serially
     for stream in listener.incoming() {
-        handle_client_buf(stream?);
+        handle_client2(stream?);
     }
     Ok(())
 }

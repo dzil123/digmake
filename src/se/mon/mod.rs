@@ -1,6 +1,6 @@
 #[macro_use]
-mod errors;
+mod error;
 mod primitives;
 
-pub use errors::{Error, Result};
+pub use error::{Error, Result};
 pub use primitives::{Parse, ParseB};

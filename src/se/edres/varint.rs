@@ -1,5 +1,5 @@
-use super::error::Error;
-use crate::se::{VarInt, VarLong};
+use crate::se::error::Error;
+use crate::se::VarInt;
 use serde::de;
 
 // When our Deserializer sees these magic strings, it will read a varint

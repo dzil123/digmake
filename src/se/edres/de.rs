@@ -1,9 +1,11 @@
-use super::{error::err, varint, Error, Result};
+use super::{error::Deserialize, varint};
 use crate::se::{
-    mon::{Parse, ParseB},
+    error::{Error, Result},
+    mon::{self, Parse, ParseB},
     Input, VarInt, VarLong,
 };
 use nom::number::complete as nom_num;
+use nom::Finish;
 use serde::{
     self,
     de::{
@@ -26,9 +28,16 @@ impl<'de> Deserializer<'de> {
         }
     }
 
-    fn update<T>(&mut self, parsed: (Input<'de>, T)) -> T {
+    fn update<T>(&mut self, result: mon::Result<'de, T>) -> Result<T> {
+        let parsed = result.finish()?;
+
         self.input = parsed.0;
-        parsed.1
+        Ok(parsed.1)
+    }
+
+    pub(super) fn len_read(&self) -> usize {
+        use nom::Offset;
+        self.original_input.offset(self.input)
     }
 }
 
@@ -39,112 +48,112 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        err("cannot deserialize any")
+        Err(Deserialize::InvalidType("any"))?
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_bool(self.update(bool::parse(self.input)?))
+        visitor.visit_bool(self.update(bool::parse(self.input))?)
     }
 
     fn deserialize_i8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i8(self.update(nom_num::be_i8(self.input)?))
+        visitor.visit_i8(self.update(nom_num::be_i8(self.input))?)
     }
 
     fn deserialize_i16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i16(self.update(nom_num::be_i16(self.input)?))
+        visitor.visit_i16(self.update(nom_num::be_i16(self.input))?)
     }
 
     fn deserialize_i32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i32(self.update(nom_num::be_i32(self.input)?))
+        visitor.visit_i32(self.update(nom_num::be_i32(self.input))?)
     }
 
     fn deserialize_i64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i64(self.update(nom_num::be_i64(self.input)?))
+        visitor.visit_i64(self.update(nom_num::be_i64(self.input))?)
     }
 
     fn deserialize_i128<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_i128(self.update(nom_num::be_i128(self.input)?))
+        visitor.visit_i128(self.update(nom_num::be_i128(self.input))?)
     }
 
     fn deserialize_u8<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u8(self.update(nom_num::be_u8(self.input)?))
+        visitor.visit_u8(self.update(nom_num::be_u8(self.input))?)
     }
 
     fn deserialize_u16<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u16(self.update(nom_num::be_u16(self.input)?))
+        visitor.visit_u16(self.update(nom_num::be_u16(self.input))?)
     }
 
     fn deserialize_u32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u32(self.update(nom_num::be_u32(self.input)?))
+        visitor.visit_u32(self.update(nom_num::be_u32(self.input))?)
     }
 
     fn deserialize_u64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u64(self.update(nom_num::be_u64(self.input)?))
+        visitor.visit_u64(self.update(nom_num::be_u64(self.input))?)
     }
 
     fn deserialize_u128<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_u128(self.update(nom_num::be_u128(self.input)?))
+        visitor.visit_u128(self.update(nom_num::be_u128(self.input))?)
     }
 
     fn deserialize_f32<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_f32(self.update(nom_num::be_f32(self.input)?))
+        visitor.visit_f32(self.update(nom_num::be_f32(self.input))?)
     }
 
     fn deserialize_f64<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_f64(self.update(nom_num::be_f64(self.input)?))
+        visitor.visit_f64(self.update(nom_num::be_f64(self.input))?)
     }
 
     fn deserialize_char<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(Deserialize::InvalidType("char"))?
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_borrowed_str(self.update(String::parse(self.input)?))
+        visitor.visit_borrowed_str(self.update(String::parse(self.input))?)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -158,21 +167,21 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(Deserialize::InvalidType("bytes"))?
     }
 
     fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        unimplemented!()
+        Err(Deserialize::InvalidType("byte_buf"))?
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        let is_some = self.update(bool::parse(self.input)?);
+        let is_some = self.update(bool::parse(self.input))?;
         if is_some {
             visitor.visit_some(self)
         } else {
@@ -231,9 +240,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        err("cannot deserialize map")
-        // let x = visitor.visit_map(MapAccesser { de: &mut self })?;
-        // Ok(x)
+        Err(Deserialize::InvalidType("map"))?
     }
 
     fn deserialize_struct<V>(
@@ -246,12 +253,10 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         V: Visitor<'de>,
     {
         if name == varint::VARINT_NAME && fields == [varint::VARINT_FIELD] {
-            let value = self.update(VarInt::parse(self.input)?);
+            let value = self.update(VarInt::parse(self.input))?;
             return visitor.visit_map(varint::VarIntDeserializer::new(value));
         }
 
-        // dbg!(name, fields);
-        // self.deserialize_map(visitor)
         self.deserialize_seq(visitor)
     }
 

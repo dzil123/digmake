@@ -16,10 +16,25 @@ pub struct Error<I> {
 }
 
 impl<I> Error<I> {
-    pub fn custom_raw(input: I, msg: String) -> Self {
+    fn custom_raw(input: I, msg: String) -> Self {
         Self {
             errors: vec![(input, ErrorKind::Custom(msg))],
         }
+    }
+
+    pub fn as_eof(&self) -> Option<NomErrorKind> {
+        for (_, kind) in &self.errors {
+            match kind {
+                ErrorKind::Nom(kind @ NomErrorKind::Eof) => return Some(*kind),
+                _ => {}
+            }
+        }
+
+        None
+    }
+
+    pub fn is_eof(&self) -> bool {
+        self.as_eof().is_some()
     }
 }
 
@@ -156,7 +171,7 @@ macro_rules! handle {
             Ok(val) => val,
             Err(err) => {
                 let msg = $msg_func(err);
-                return Error::custom_slice($original_input, $input, msg);
+                return crate::se::mon::Error::custom_slice($original_input, $input, msg);
             }
         }
     };

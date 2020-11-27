@@ -1,22 +1,24 @@
-use super::errors::{Error, Result};
-use crate::se::{Input, VarInt, VarLong};
+use super::{Error as MonError, Result as MonResult};
+use crate::se::{
+    error::{Error, Result},
+    Input, VarInt, VarLong,
+};
 use nom::{bytes::complete::take, error::context, number::complete::be_u8};
 use std::convert::TryFrom;
 
 pub trait Parse<T> {
-    fn parse(input: Input) -> Result<T>;
+    fn parse(input: Input) -> MonResult<T>;
 }
 
 pub trait ParseB<T: ?Sized> {
-    fn parse<'a>(input: Input<'a>) -> Result<&'a T>;
+    fn parse<'a>(input: Input<'a>) -> MonResult<&'a T>;
 }
 
 // shared impl for variable length numbers, VarInt and VarLong
 macro_rules! var_num {
     ($name:ident => ($type:ty, $size:expr)) => {
         impl Parse<$type> for $name {
-            #[allow(dead_code)]
-            fn parse(mut input: Input) -> Result<$type> {
+            fn parse(mut input: Input) -> MonResult<$type> {
                 let original_input = input;
                 let mut bytes_read = 0u8;
                 let mut result: $type = 0;
@@ -39,7 +41,7 @@ macro_rules! var_num {
                             ),
                             read
                         );
-                        return Error::custom_slice(original_input, input, msg);
+                        return MonError::custom_slice(original_input, input, msg);
                     }
                 }
                 Ok((input, result))
@@ -47,8 +49,11 @@ macro_rules! var_num {
         }
 
         impl $name {
-            #[allow(dead_code)]
-            fn parse_as_usize(input: Input) -> Result<usize> {
+            pub const fn max_size() -> usize {
+                $size
+            }
+
+            pub fn parse_as_usize(input: Input) -> MonResult<usize> {
                 let original_input = input;
                 let (input, num) = <$name as Parse<$type>>::parse(input)?;
 
@@ -59,6 +64,50 @@ macro_rules! var_num {
 
                 Ok((input, num))
             }
+
+            pub fn _parse<I>(input: &mut I) -> Result<$type>
+            where
+                I: std::io::Read,
+            {
+                let mut bytes_read = 0u8;
+                let mut result: $type = 0;
+                loop {
+                    let read: u8 = {
+                        let mut buf = [0u8; 1];
+                        if input.read(&mut buf)? == 0 {
+                            return Err(crate::se::error::Error::Eof);
+                        }
+
+                        buf[0]
+                    };
+                    let temp = (read & 0b01111111) as $type;
+                    result |= temp << (7 * bytes_read);
+                    bytes_read += 1;
+                    if read & 0b10000000 == 0 {
+                        break;
+                    }
+                    if bytes_read >= $size {
+                        let msg = format!(
+                            concat!(
+                                stringify!($name),
+                                " must finish within ",
+                                $size,
+                                " bytes, got 0x{0:02x} 0b{0:08b} instead"
+                            ),
+                            read
+                        );
+                        return Err(Error::Mon(msg));
+                    }
+                }
+                Ok(result)
+            }
+
+            pub fn _parse_as_usize<I>(input: &mut I) -> Result<usize>
+            where
+                I: std::io::Read,
+            {
+                Ok(usize::try_from(Self::_parse(input)?)?)
+            }
         }
     };
 }
@@ -67,7 +116,7 @@ var_num!(VarInt => (i32, 5));
 var_num!(VarLong => (i64, 10));
 
 impl ParseB<str> for String {
-    fn parse<'a>(input: Input<'a>) -> Result<&'a str> {
+    fn parse<'a>(input: Input<'a>) -> MonResult<&'a str> {
         let (input, len) = context("string length", VarInt::parse_as_usize)(input)?;
         let original_input = input;
         let (input, data) = context("string content", take(len))(input)?;
@@ -85,7 +134,7 @@ impl ParseB<str> for String {
 }
 
 impl Parse<bool> for bool {
-    fn parse(input: Input) -> Result<bool> {
+    fn parse(input: Input) -> MonResult<bool> {
         let original_input = input;
         let (input, byte) = context("bool", take(1u8))(input)?;
 
@@ -99,7 +148,7 @@ impl Parse<bool> for bool {
             //         format!("0x{:02x} not valid bool", invalid),
             //     )
             // }
-            _ => true, // forgive me for i have sinned
+            _ => true, // actually you know what its fine
         };
 
         Ok((input, result))
