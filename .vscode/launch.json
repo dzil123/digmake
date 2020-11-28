@@ -7,25 +7,6 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'digmake'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--lib",
-                    "--package=digmake"
-                ],
-                "filter": {
-                    "name": "digmake",
-                    "kind": "lib"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
             "name": "Debug executable 'digmake'",
             "cargo": {
                 "args": [
@@ -44,53 +25,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'digmake'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=digmake",
-                    "--package=digmake"
-                ],
-                "filter": {
-                    "name": "digmake",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug executable 'deserial'",
+            "name": "Debug executable 'packet_inspector'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=deserial",
+                    "--bin=packet_inspector",
                     "--package=digmake"
                 ],
                 "filter": {
-                    "name": "deserial",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'deserial'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=deserial",
-                    "--package=digmake"
-                ],
-                "filter": {
-                    "name": "deserial",
+                    "name": "packet_inspector",
                     "kind": "bin"
                 }
             },
@@ -104,25 +47,6 @@
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=network",
-                    "--package=digmake"
-                ],
-                "filter": {
-                    "name": "network",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'network'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
                     "--bin=network",
                     "--package=digmake"
                 ],

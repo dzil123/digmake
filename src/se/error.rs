@@ -25,6 +25,9 @@ pub enum Error {
     #[error("{0}")]
     Packet(String),
 
+    #[error(transparent)]
+    Hex(#[from] hex::FromHexError),
+
     #[error("{0}")]
     Other(String),
 }
