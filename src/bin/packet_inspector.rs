@@ -1,6 +1,8 @@
 use digmake::se::{from_bytes, from_bytes_debug, Error, Input, Result, VarInt};
 use std::fmt::{Debug, Display};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
+use std::path::Path;
 
 fn read_first<T>(slice: &[T]) -> &[T] {
     &slice[..10.min(slice.len())]
@@ -31,13 +33,13 @@ fn show_packet_dsp<T: Display>(packet: T) {
     println!("{}", packet);
 }
 
-struct Data<'a> {
+struct Data {
     is_server: bool,
-    data: &'a str,
+    data: Vec<u8>,
 }
 
-impl<'a> Data<'a> {
-    fn new(is_server: bool, data: &'a str) -> Self {
+impl Data {
+    fn new(is_server: bool, data: Vec<u8>) -> Self {
         Data { is_server, data }
     }
 }
@@ -45,7 +47,7 @@ impl<'a> Data<'a> {
 fn do_one_packet<T: BufRead>(mut reader: &mut T, is_server: bool) -> Result<()> {
     println!();
     digmake::read_packet(&mut reader, |packet_id, buffer| {
-        println!("Packet id: {}", packet_id);
+        println!("Packet id: 0x{:02X}", packet_id);
         println!("    {:?}...", &buffer[..10.min(buffer.len())]);
         print!("Sent by ");
         match is_server {
@@ -73,13 +75,17 @@ fn do_one_packet<T: BufRead>(mut reader: &mut T, is_server: bool) -> Result<()> 
                     name: &'a str,
                 }
 
+                #[derive(serde::Deserialize, Debug)]
+                struct TeleportConfirm {
+                    teleport_id: VarInt,
+                }
+
                 match read_packet::<Handshake>(buffer) {
                     Ok(packet) => show_packet_dbg(packet),
-                    Err(_) => {
-                        println!("failed 0x00 client packet as Handshake, try LoginStart");
-                        let packet: LoginStart = read_packet(buffer)?;
-                        show_packet_dbg(packet);
-                    }
+                    Err(_) => match read_packet::<LoginStart>(buffer) {
+                        Ok(packet) => show_packet_dbg(packet),
+                        Err(_) => show_packet_dbg(read_packet::<TeleportConfirm>(buffer)?),
+                    },
                 }
             }
             (0x00, true) => {
@@ -111,8 +117,7 @@ fn is_reader_not_eof<T: BufRead>(reader: &mut T) -> Result<bool> {
 }
 
 fn do_one_data(data: &Data) -> Result<()> {
-    let bytes = hex::decode(&*data.data)?;
-    let mut reader = BufReader::new(&*bytes);
+    let mut reader = BufReader::new(&*data.data);
 
     while is_reader_not_eof(&mut reader)? {
         do_one_packet(&mut reader, data.is_server)?;
@@ -129,11 +134,79 @@ fn do_all_data(datas: &[Data]) -> Result<()> {
     Ok(())
 }
 
-fn get_data() -> Vec<Data<'static>> {
-    todo!()
+fn remove_whitespace(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+// read from a wireshark tcp stream dump in yaml format
+fn read_data_from_file<P: AsRef<Path>>(filename: P) -> Vec<Data> {
+    let data: serde_yaml::Value = {
+        let file = File::open(filename).unwrap();
+        let data = serde_yaml::from_reader(&file);
+        file.sync_all().unwrap();
+        data.unwrap()
+    };
+
+    let data = data.as_mapping().unwrap();
+    let mut output = Vec::with_capacity(data.len()); // data.len() == tcp packets, upper limit on number of Datas
+    let mut data = data.into_iter();
+
+    let mut read_one_physical_packet = || -> Option<Data> {
+        let (key, value) = match data.next() {
+            Some(val) => val,
+            None => return None,
+        };
+        let (key, value) = (key.as_str().unwrap(), value.as_str().unwrap());
+
+        let is_server = {
+            // wow i hope this is consistent
+            if key.starts_with("peer0") {
+                false
+            } else if key.starts_with("peer1") {
+                true
+            } else {
+                panic!()
+            }
+        };
+        let value = remove_whitespace(value);
+        println!(
+            "read physical packet: {} {:?}...",
+            is_server,
+            value.chars().take(50).collect::<String>()
+        );
+        let packet_data = base64::decode(&value).unwrap();
+
+        Some(Data::new(is_server, packet_data))
+    };
+
+    // combine all consecutive packets from one peer into a single packet
+    // because logical mc packets can span many physical tcp packets.
+    // and although each Data struct can have many mc packets,
+    // a packet cannot be split into multiple Data structs.
+
+    if let Some(mut data) = read_one_physical_packet() {
+        loop {
+            let mut next_data = match read_one_physical_packet() {
+                Some(d) => d,
+                None => {
+                    output.push(data);
+                    break;
+                }
+            };
+
+            if data.is_server == next_data.is_server {
+                data.data.append(&mut next_data.data);
+            } else {
+                output.push(data);
+                data = next_data;
+            }
+        }
+    }
+
+    output
 }
 
 fn main() {
-    let data = get_data();
+    let data = read_data_from_file("packet_full.yaml");
     do_all_data(&data).unwrap();
 }

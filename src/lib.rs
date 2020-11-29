@@ -26,7 +26,7 @@ where
     let (packet_id, id_len) = util::count_reads(&mut reader, |reader| VarInt::_parse(reader));
     let packet_id = packet_id?;
     println!(
-        "packet_len: {}, packet_id: {}, id_len: {}",
+        "packet_len: {}, packet_id: 0x{:02X}, id_len: {}",
         packet_len, packet_id, id_len
     );
 
