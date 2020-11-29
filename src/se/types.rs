@@ -1,7 +1,21 @@
 macro_rules! var_num {
     ($name:ident, $type:ty) => {
-        #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Ord, Eq)]
+        #[derive(Copy, Clone, PartialOrd, PartialEq, Ord, Eq)]
         pub struct $name(pub $type);
+
+        impl std::fmt::Debug for $name {
+            #[inline(always)]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Debug::fmt(&self.0, f)
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            #[inline(always)]
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
     };
 }
 

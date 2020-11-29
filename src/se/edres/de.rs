@@ -39,6 +39,13 @@ impl<'de> Deserializer<'de> {
         use nom::Offset;
         self.original_input.offset(self.input)
     }
+
+    fn deserialize_seq_known_length<V>(&mut self, visitor: V) -> Result<V::Value>
+    where
+        V: Visitor<'de>,
+    {
+        visitor.visit_seq(self)
+    }
 }
 
 impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
@@ -163,18 +170,20 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         self.deserialize_str(visitor)
     }
 
-    fn deserialize_bytes<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_bytes<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(Deserialize::InvalidType("bytes"))?
+        visitor.visit_borrowed_bytes(
+            self.update(nom::bytes::complete::take_till(|_| false)(self.input))?,
+        )
     }
 
-    fn deserialize_byte_buf<V>(self, _visitor: V) -> Result<V::Value>
+    fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        Err(Deserialize::InvalidType("byte_buf"))?
+        self.deserialize_bytes(visitor)
     }
 
     fn deserialize_option<V>(self, visitor: V) -> Result<V::Value>
@@ -210,18 +219,22 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         visitor.visit_newtype_struct(self)
     }
 
-    fn deserialize_seq<V>(self, visitor: V) -> Result<V::Value>
+    // vec with unknown length
+    fn deserialize_seq<V>(mut self, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        visitor.visit_seq(self)
+        // visitor.visit_seq(self)
+        let len = self.update(VarInt::parse_as_usize(self.input))?;
+        visitor.visit_seq(VecDeserializer::new(&mut self, len))
     }
 
+    // includes arrays with known length
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
     where
         V: Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        self.deserialize_seq_known_length(visitor)
     }
 
     fn deserialize_tuple_struct<V>(
@@ -233,7 +246,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        self.deserialize_seq_known_length(visitor)
     }
 
     fn deserialize_map<V>(self, _visitor: V) -> Result<V::Value>
@@ -243,6 +256,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         Err(Deserialize::InvalidType("map"))?
     }
 
+    // structs are stored the same as their contents because we dont store keys
     fn deserialize_struct<V>(
         self,
         name: &'static str,
@@ -257,7 +271,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
             return visitor.visit_map(varint::VarIntDeserializer::new(value));
         }
 
-        self.deserialize_seq(visitor)
+        self.deserialize_seq_known_length(visitor)
     }
 
     fn deserialize_enum<V>(
@@ -275,7 +289,6 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
         //     std::any::type_name::<V::Value>()
         // );
         visitor.visit_enum(self)
-        // visitor.visit_enum(*self)
     }
 
     fn deserialize_identifier<V>(self, visitor: V) -> Result<V::Value>
@@ -383,7 +396,7 @@ impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
         //     std::any::type_name::<V>(),
         //     std::any::type_name::<V::Value>()
         // );
-        self.deserialize_seq(visitor)
+        self.deserialize_seq_known_length(visitor)
     }
 
     // Handles Foo::Five
@@ -396,6 +409,37 @@ impl<'de, 'a> VariantAccess<'de> for &'a mut Deserializer<'de> {
         //     std::any::type_name::<V>(),
         //     std::any::type_name::<V::Value>()
         // );
-        self.deserialize_seq(visitor)
+        self.deserialize_seq_known_length(visitor)
+    }
+}
+
+struct VecDeserializer<'a, 'de: 'a> {
+    deserializer: &'a mut Deserializer<'de>,
+    len: usize,
+}
+
+impl<'a, 'de> VecDeserializer<'a, 'de> {
+    fn new(deserializer: &'a mut Deserializer<'de>, len: usize) -> Self {
+        Self { deserializer, len }
+    }
+}
+
+impl<'de, 'a> SeqAccess<'de> for VecDeserializer<'a, 'de> {
+    type Error = <&'de mut Deserializer<'de> as SDeserializer<'de>>::Error;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: DeserializeSeed<'de>,
+    {
+        if self.len <= 0 {
+            Ok(None)
+        } else {
+            self.len -= 1;
+            seed.deserialize(&mut *self.deserializer).map(Some)
+        }
+    }
+
+    fn size_hint(&self) -> Option<usize> {
+        Some(self.len)
     }
 }

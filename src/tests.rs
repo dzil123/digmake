@@ -180,3 +180,25 @@ pub fn test_varint() {
     }
 }
 */
+
+pub fn test_vec() {
+    use serde::{self, Deserialize};
+
+    #[derive(Deserialize, Debug)]
+    struct Struct<'a> {
+        foo: Vec<(i8, i16)>,
+        bar: &'a [u8],
+    }
+
+    let DATA = vec![
+        2, // len of foo
+        1, 2, 3, // foo[0]
+        4, 5, 6, // foo[1]
+        // bytearray: "The length of this array must be inferred from the packet length."
+        7, 8, // rest of data is put into bar
+    ];
+
+    let data = from_bytes_debug::<Struct>(&DATA);
+    dbg!(&data);
+    dbg!(data.1.unwrap());
+}
