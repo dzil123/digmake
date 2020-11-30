@@ -7,9 +7,8 @@ impl<'de> de::Deserialize<'de> for Position {
         D: de::Deserializer<'de>,
     {
         let data = u64::deserialize(deserializer)?;
-        dbg!(data);
 
-        let mut x = dbg!(dbg!(data >> 38) as i32);
+        let mut x = (data >> 32) as i32;
         let mut y = (data & 0xFFF) as i16;
         let mut z = (data << 26 >> 38) as i32;
 
@@ -22,8 +21,6 @@ impl<'de> de::Deserialize<'de> for Position {
         if z >= 2i32.pow(25) {
             z -= 2i32.pow(26)
         }
-
-        dbg!(x);
 
         Ok(Position { x, y, z })
     }

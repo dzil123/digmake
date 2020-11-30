@@ -1,12 +1,125 @@
+use digmake::se::Position;
 use digmake::se::{from_bytes_debug, Input, Result, VarInt};
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use serde::{self, Deserialize};
+
+mod customvec {
+    // Default Vec impl is a VarInt length followed by an array
+    // This is for Vecs with the prefixed length of a different type
+
+    use serde::de::Expected;
+    use std::fmt;
+    // why isnt serde::de::Expected implemented for more types
+    struct Index(usize);
+
+    impl Expected for Index {
+        fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+            fmt::Display::fmt(&self.0, fmt)
+        }
+    }
+
+    macro_rules! customvec_impl {
+        ($name:ident, $type:ty) => {
+            pub mod $name {
+                use super::Index;
+                use serde::de::{Deserialize, Deserializer, Error, SeqAccess, Unexpected, Visitor};
+                use std::convert::TryFrom;
+                use std::marker::PhantomData;
+
+                pub fn deserialize<'de, D, T>(de: D) -> std::result::Result<Vec<T>, D::Error>
+                where
+                    D: Deserializer<'de>,
+                    T: Deserialize<'de>,
+                {
+                    struct CustomVecVisitor<T> {
+                        marker: PhantomData<T>,
+                    }
+
+                    impl<'de, T> Visitor<'de> for CustomVecVisitor<T>
+                    where
+                        T: Deserialize<'de>,
+                    {
+                        type Value = Vec<T>;
+
+                        fn expecting(
+                            &self,
+                            formatter: &mut std::fmt::Formatter,
+                        ) -> std::fmt::Result {
+                            formatter.write_str(concat!(
+                                "an array prefixed with its length as ",
+                                stringify!($type)
+                            ))
+                        }
+
+                        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+                        where
+                            A: SeqAccess<'de>,
+                        {
+                            let len: $type = match seq.next_element()? {
+                                Some(x) => x,
+                                None => {
+                                    return Err(Error::missing_field(concat!(
+                                        stringify!($type),
+                                        " len"
+                                    )))
+                                }
+                            };
+
+                            let len = match usize::try_from(len) {
+                                Ok(x) => x,
+                                Err(_) => {
+                                    return Err(Error::invalid_value(
+                                        Unexpected::Signed(len.into()),
+                                        &concat!("an ", stringify!($type), " > 0"),
+                                    ))
+                                }
+                            };
+
+                            let mut values = Vec::with_capacity(len);
+
+                            for i in 0..len {
+                                let val = match seq.next_element()? {
+                                    Some(x) => x,
+                                    None => {
+                                        return Err(Error::invalid_length(len, &Index(i)));
+                                    }
+                                };
+
+                                values.push(val);
+                            }
+
+                            Ok(values)
+                        }
+                    }
+
+                    let visitor = CustomVecVisitor {
+                        marker: PhantomData,
+                    };
+
+                    // the length is unknown and not actually 0,
+                    // but this is good enough since my Deserializer doesnt look at the length param
+                    de.deserialize_tuple(0, visitor)
+                }
+            }
+        };
+    }
+
+    customvec_impl!(short, i16);
+    customvec_impl!(int, i32);
+}
+
+fn blocked_on(feature: &'static str) {
+    println!("parsing is blocked on {} feature", feature);
+}
+
+fn blocked_on_nbt() {
+    blocked_on("nbt");
+}
 
 #[derive(Deserialize)]
 #[serde(remote = "uuid::Uuid")]
@@ -62,7 +175,6 @@ fn do_one_packet<T: BufRead>(
     mut reader: &mut T,
     is_server: bool,
 ) -> std::result::Result<i32, digmake::se::Error> {
-    println!();
     digmake::read_packeta(&mut reader, |packet_id, buffer| {
         println!("Packet id: 0x{:02X}", packet_id);
         println!("    {:?}...", &buffer[..10.min(buffer.len())]);
@@ -153,6 +265,33 @@ fn do_one_packet<T: BufRead>(
                 let packet: SpawnLivingEntity = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
+            (0x05, false) => {
+                #[derive(serde::Deserialize, Debug)]
+                enum ChatMode {
+                    Enabled,
+                    CommandsOnly,
+                    Hidden,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                enum Hand {
+                    Left,
+                    Right,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct ClientSettings {
+                    locale: String,
+                    view_distance: u8, // chunks
+                    chat_mode: ChatMode,
+                    chat_colors: bool,
+                    displayed_skin: u8, // bitmask on skin parts
+                    main_hand: Hand,
+                }
+
+                let packet: ClientSettings = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
             (0x0B, false) => {
                 #[derive(serde::Deserialize, Debug)]
                 struct PluginMessageClient<'a> {
@@ -181,6 +320,87 @@ fn do_one_packet<T: BufRead>(
                 let packet: ServerDifficulty = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
+            (0x10, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct DeclareCommands {
+                    node_len: VarInt,
+                    // nodes: Vec<Node>,
+                    // root_index: VarInt,
+                }
+
+                let packet: DeclareCommands = read_packet(buffer)?;
+                println!("this packet impossible to parse: https://wiki.vg/Command_Data");
+                show_packet_dbg(packet);
+            }
+            (0x12, false) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct PlayerPosition {
+                    pos: (f64, f64, f64),
+                    on_ground: bool,
+                }
+
+                let packet: PlayerPosition = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x13, false) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct PlayerPosition {
+                    pos: (f64, f64, f64),
+                    yaw: f32,
+                    pitch: f32,
+                    on_ground: bool,
+                }
+
+                let packet: PlayerPosition = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x13, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct Slot {
+                    item_id: VarInt,
+                    item_count: u8,
+                    nbt: (),
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct WindowItems {
+                    window_id: u8,
+                    #[serde(with = "customvec::short")]
+                    slots: Vec<Option<Slot>>,
+                }
+
+                let packet: WindowItems = read_packet(buffer)?;
+                blocked_on_nbt();
+                show_packet_dbg(packet);
+            }
+            (0x15, false) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct PlayerMovement {
+                    on_ground: bool,
+                }
+
+                let packet: PlayerMovement = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x15, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct Slot {
+                    item_id: VarInt,
+                    item_count: u8,
+                    nbt: (),
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct SetSlotInWindow {
+                    window_id: i8,
+                    slot: i16,
+                    data: Option<Slot>,
+                }
+
+                let packet: SetSlotInWindow = read_packet(buffer)?;
+                blocked_on_nbt();
+                show_packet_dbg(packet);
+            }
             (0x17, true) => {
                 #[derive(serde::Deserialize, Debug)]
                 struct PluginMessageServer<'a> {
@@ -191,7 +411,60 @@ fn do_one_packet<T: BufRead>(
                 let packet: PluginMessageServer = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
+            (0x1A, false) => {
+                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[repr(u8)]
+                enum PlayerAbilities {
+                    NotFlying = 0x00,
+                    Flying = 0x02,
+                }
+
+                let packet: PlayerAbilities = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x1A, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct EntityStatus {
+                    id: i32,
+                    status: u8,
+                }
+
+                let packet: EntityStatus = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x1F, true) | (0x10, false) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct KeepAlive(i64);
+
+                let packet: KeepAlive = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x20, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct ChunkData {
+                    chunk_x: i32,
+                    chunk_y: i32,
+                    full_chunk: bool,
+                    primary_bit_mask: VarInt,
+                }
+
+                let packet: ChunkData = read_packet(buffer)?;
+                blocked_on_nbt();
+                show_packet_dbg_min(packet);
+            }
             (0x23, true) => {
+                #[derive(serde::Deserialize)]
+                struct LightArray(Vec<u8>);
+
+                impl Debug for LightArray {
+                    fn fmt(
+                        &self,
+                        fmt: &mut std::fmt::Formatter<'_>,
+                    ) -> std::result::Result<(), std::fmt::Error> {
+                        fmt.write_fmt(format_args!("[u8; {}]", self.0.len()))
+                    }
+                }
+
                 #[derive(serde::Deserialize, Debug)]
                 struct UpdateLight {
                     chunk_x: VarInt,
@@ -201,8 +474,8 @@ fn do_one_packet<T: BufRead>(
                     block_light_mask: VarInt,
                     empty_sky_light_mask: VarInt,
                     empty_block_light_mask: VarInt,
-                    // sky_light: Vec<u8>,   // always 2048,
-                    // block_light: Vec<u8>, // always 2048,
+                    sky_light: LightArray,   // always 2048,
+                    block_light: LightArray, // always 2048,
                 }
 
                 let packet: UpdateLight = read_packet(buffer)?;
@@ -225,22 +498,21 @@ fn do_one_packet<T: BufRead>(
                     Creative = 1,
                     Adventure = 2,
                     Spectator = 3,
-                    None = -1, // -1i8 as u8
+                    None = -1,
                 }
 
                 #[derive(serde::Deserialize, Debug)]
-                struct JoinGame<'a> {
+                struct JoinGame {
                     entity_id: i32,
                     is_hardcore: bool,
                     gamemode: Gamemode,
                     prev_gamemode: PreviousGamemode,
                     worlds: Vec<String>,
-                    // rest: &'a [u8],
-                    x: std::marker::PhantomData<&'a [u8]>,
                 }
 
                 let packet: JoinGame = read_packet(buffer)?;
-                show_packet_dbg_min(packet);
+                blocked_on_nbt();
+                show_packet_dbg(packet);
             }
             (0x30, true) => {
                 #[derive(serde::Deserialize, Debug)]
@@ -253,6 +525,143 @@ fn do_one_packet<T: BufRead>(
                 let packet: PlayerAbilities = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
+            (0x32, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct Properties {
+                    name: String,
+                    value: String,
+                    signature: Option<String>,
+                }
+
+                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[repr(i8)]
+                enum Gamemode {
+                    Survival = 0,
+                    Creative = 1,
+                    Adventure = 2,
+                    Spectator = 3,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Add {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                    name: String,
+                    properties: Vec<Properties>,
+                    gamemode: Gamemode,
+                    ping: VarInt, // time, in ms
+                    display_name: Option<String>,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct UpdateGamemode {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                    gamemode: VarInt,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct UpdateLatency {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                    ping: VarInt,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct UpdateDisplayName {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                    display_name: Option<String>,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct RemovePlayer {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                enum PlayerInfo {
+                    Add(Vec<Add>),
+                    UpdateGamemode(Vec<UpdateGamemode>),
+                    UpdateLatency(Vec<UpdateLatency>),
+                    UpdateDisplayName(Vec<UpdateDisplayName>),
+                    RemovePlayer(Vec<RemovePlayer>),
+                }
+
+                let packet: PlayerInfo = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x34, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct PlayerPositionAndLook {
+                    pos: (f64, f64, f64),
+                    yaw: f32,
+                    pitch: f32,
+                    flags: u8,
+                    teleport_id: VarInt,
+                }
+
+                let packet: PlayerPositionAndLook = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x35, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct Common {
+                    crafting_book: bool,
+                    crafting_filter: bool,
+                    smelting_book: bool,
+                    smelting_filter: bool,
+                    blast_furnace_book: bool,
+                    blast_furnace_filter: bool,
+                    smoker_book: bool,
+                    smoker_filter: bool,
+                    recipe_ids: Vec<String>,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                enum Action {
+                    Init(Common, Vec<String>),
+                    Add(Common),
+                    Remove(Common),
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct UnlockRecipes {
+                    action: Action,
+                }
+
+                let packet: UnlockRecipes = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x3D, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                enum WorldBorder {
+                    Diameter(f64),
+                    LerpSize {
+                        old_diameter: f64,
+                        new_diameter: f64,
+                        // speed: VarLong,
+                    },
+                    Center {
+                        x: f64,
+                        z: f64,
+                    },
+                    Initialize {
+                        x: f64,
+                        z: f64,
+                        old_diameter: f64,
+                        new_diameter: f64,
+                        // speed: VarLong,
+                        // etc
+                    },
+                    WarningTime(VarInt),
+                    WarningBlocks(VarInt),
+                }
+
+                let packet: WorldBorder = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
             (0x3F, true) => {
                 #[derive(serde::Deserialize, Debug)]
                 struct HeldItemChange {
@@ -262,11 +671,158 @@ fn do_one_packet<T: BufRead>(
                 let packet: HeldItemChange = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
+            (0x40, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct UpdateViewPosition {
+                    chunk_x: VarInt,
+                    chunk_z: VarInt,
+                }
+
+                let packet: UpdateViewPosition = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x42, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct SpawnPosition(Position);
+
+                let packet: SpawnPosition = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x44, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct EntityMetadata {
+                    entity_id: VarInt,
+                    // impossible to parse
+                }
+
+                let packet: EntityMetadata = read_packet(buffer)?;
+                blocked_on("0xff terminator vec");
+                show_packet_dbg(packet);
+            }
+            (0x48, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct SetXP {
+                    xp_bar: f32, // 0-1
+                    level: VarInt,
+                    total_xp: VarInt,
+                }
+
+                let packet: SetXP = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x49, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct UpdateHealth {
+                    health: f32,
+                    food: VarInt,
+                    saturation: f32,
+                }
+
+                let packet: UpdateHealth = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x4E, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                struct TimeUpdate {
+                    world_age: i64,
+                    time_of_day: i64,
+                }
+
+                let packet: TimeUpdate = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
+            (0x57, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                enum Frame {
+                    Task,
+                    Challenge,
+                    Goal,
+                }
+
+                #[allow(non_camel_case_types)]
+                #[derive(serde::Deserialize, Debug)]
+                enum Flags {
+                    None,
+                    Background { texture: String },
+                    Toast,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Display {
+                    title: String,
+                    desc: String,
+                    icon: Option<()>, // nbt
+                    frame: Frame,
+                    flags: Flags,
+                    coords: (f32, f32),
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Advancement {
+                    name: String,
+                    parent: Option<String>,
+                    display: Option<Display>,
+                    criteria: Vec<String>,
+                    requirements: Vec<Vec<String>>,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Progress {
+                    name: String,
+                    criteria: Vec<(String, Option<i64>)>, // name, achieved?, date of achieving
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Advancements {
+                    reset_clear: bool,
+                    advancements: Vec<Advancement>,
+                    removed: Vec<String>,
+                    progress: Vec<Progress>,
+                }
+
+                let packet: Advancements = read_packet(buffer)?;
+                blocked_on_nbt();
+                show_packet_dbg(packet);
+            }
+            (0x58, true) => {
+                #[derive(serde::Deserialize, Debug)]
+                enum Operation {
+                    AbsoluteAdd, // value += amount
+                    PercentAdd,  // value += amount * value
+                    Multiply,    // value *= amount
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Modifier {
+                    #[serde(with = "Uuid")]
+                    uuid: uuid::Uuid,
+                    amount: f64,
+                    operation: Operation,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct Property {
+                    key: String,
+                    value: f64,
+                    modifiers: Vec<Modifier>,
+                }
+
+                #[derive(serde::Deserialize, Debug)]
+                struct EntityProperties {
+                    entity_id: VarInt,
+                    #[serde(with = "customvec::int")]
+                    properties: Vec<Property>,
+                }
+
+                let packet: EntityProperties = read_packet(buffer)?;
+                show_packet_dbg(packet);
+            }
             (0x5A, true) => {
                 #[derive(serde::Deserialize, Debug)]
-                struct Recipie;
+                struct Recipe;
 
-                let packet: Vec<Recipie> = read_packet(buffer)?;
+                let _packet: Vec<Recipe> = read_packet(buffer)?;
+                blocked_on("string enum");
                 // show_packet_dbg_min(packet);
             }
             (0x5B, true) => {
@@ -284,7 +840,8 @@ fn do_one_packet<T: BufRead>(
                     entities: Vec<Tag>,
                 }
 
-                let packet: Tags = read_packet(buffer)?;
+                let _packet: Tags = read_packet(buffer)?;
+                println!("packet fully parsed; display suppressed due to large size");
                 // show_packet_dbg_min(packet);
             }
             _ => {
@@ -306,6 +863,7 @@ fn do_one_data(data: &Data) -> Result<()> {
 
     while is_reader_not_eof(&mut reader)? {
         let packet_id = do_one_packet(&mut reader, data.is_server)?;
+        println!();
 
         unsafe {
             if let None = PACKET_TYPE_COUNTER {
