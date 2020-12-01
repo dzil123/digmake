@@ -103,6 +103,7 @@ mod customvec {
 
                     // the length is unknown and not actually 0,
                     // but this is good enough since my Deserializer doesnt look at the length param
+                    // only works if (len, item0, item1, ...) == (len, (item0, item1, ...))
                     de.deserialize_tuple(0, visitor)
                 }
             }
@@ -976,7 +977,7 @@ fn main() {
     println!();
     unsafe {
         for (key, value) in PACKET_TYPE_COUNTER.as_mut().unwrap().iter() {
-            println!("{:?}: {}", key, value);
+            println!("({:02X}, {}): {}", key.0, key.1, value);
         }
     }
 }
