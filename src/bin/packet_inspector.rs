@@ -114,6 +114,72 @@ mod customvec {
     customvec_impl!(int, i32);
 }
 
+#[macro_use]
+mod bigarray {
+    pub trait BigArray<'de>: Sized {
+        fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+        where
+            D: serde::de::Deserializer<'de>;
+    }
+
+    #[macro_export]
+    macro_rules! big_array {
+        ($len:expr) => {
+            use serde::de::{Deserialize, Deserializer, Error, SeqAccess, Visitor};
+            use std::fmt;
+            use std::marker::PhantomData;
+
+            impl<'de, T> BigArray<'de> for PhantomData<T>
+            where
+                T: Deserialize<'de>,
+            {
+                fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+                where
+                    D: Deserializer<'de>,
+                {
+                    struct ArrayVisitor<T> {
+                        element: PhantomData<T>,
+                    }
+
+                    impl<'de, T> Visitor<'de> for ArrayVisitor<T>
+                    where
+                        T: Deserialize<'de>,
+                    {
+                        type Value = PhantomData<T>;
+
+                        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_fmt(format_args!(
+                                concat!("{} items of ", stringify!(T)),
+                                $len
+                            ))
+                        }
+
+                        fn visit_seq<A>(
+                            self,
+                            mut seq: A,
+                        ) -> std::result::Result<Self::Value, A::Error>
+                        where
+                            A: SeqAccess<'de>,
+                        {
+                            for i in 0..$len {
+                                let _: T = seq.next_element()?.ok_or_else(|| {
+                                    Error::invalid_length(i + 1, &format!("{}", $len).as_str())
+                                })?;
+                            }
+                            Ok(PhantomData)
+                        }
+                    }
+
+                    let visitor = ArrayVisitor {
+                        element: PhantomData,
+                    };
+                    deserializer.deserialize_tuple($len, visitor)
+                }
+            }
+        };
+    }
+}
+
 fn blocked_on(feature: &'static str) {
     println!("parsing is blocked on {} feature", feature);
 }
@@ -502,6 +568,10 @@ fn do_one_packet<T: BufRead>(
                     None = -1,
                 }
 
+                // hack to skip a hardcoded # of bytes of unparsed nbt to read the rest of the packet
+                use crate::bigarray::BigArray;
+                big_array!(30746);
+
                 #[derive(serde::Deserialize, Debug)]
                 struct JoinGame {
                     entity_id: i32,
@@ -509,6 +579,16 @@ fn do_one_packet<T: BufRead>(
                     gamemode: Gamemode,
                     prev_gamemode: PreviousGamemode,
                     worlds: Vec<String>,
+                    #[serde(with = "BigArray")]
+                    unparsed_nbt: std::marker::PhantomData<u8>,
+                    spawn_world: String,
+                    hashed_seed: i64,
+                    max_players: VarInt,
+                    view_distance: VarInt,
+                    reduced_debug: bool,
+                    not_immediate_respawn: bool,
+                    is_debug: bool,
+                    is_flat: bool,
                 }
 
                 let packet: JoinGame = read_packet(buffer)?;

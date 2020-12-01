@@ -142,7 +142,7 @@ impl Parse<bool> for bool {
             0x00 => false,
             0x01 => true,
             // invalid => {
-            //     return Error::custom_slice(
+            //     return MonError::custom_slice(
             //         original_input,
             //         input,
             //         format!("0x{:02x} not valid bool", invalid),
