@@ -821,8 +821,9 @@ fn do_one_packet<T: BufRead>(
                 #[derive(serde::Deserialize, Debug)]
                 struct Recipe;
 
-                let _packet: Vec<Recipe> = read_packet(buffer)?;
+                let packet: Vec<Recipe> = read_packet(buffer)?;
                 blocked_on("string enum");
+                println!("number of recipes read: {}", packet.len());
                 // show_packet_dbg_min(packet);
             }
             (0x5B, true) => {
@@ -840,8 +841,15 @@ fn do_one_packet<T: BufRead>(
                     entities: Vec<Tag>,
                 }
 
-                let _packet: Tags = read_packet(buffer)?;
+                let packet: Tags = read_packet(buffer)?;
                 println!("packet fully parsed; display suppressed due to large size");
+                println!(
+                    "Tags {{ blocks: {}, items: {}, fluids: {}, entities: {} }}",
+                    packet.blocks.len(),
+                    packet.items.len(),
+                    packet.fluids.len(),
+                    packet.entities.len()
+                );
                 // show_packet_dbg_min(packet);
             }
             _ => {

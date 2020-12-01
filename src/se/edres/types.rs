@@ -8,7 +8,7 @@ impl<'de> de::Deserialize<'de> for Position {
     {
         let data = u64::deserialize(deserializer)?;
 
-        let mut x = (data >> 32) as i32;
+        let mut x = (data >> 38) as i32;
         let mut y = (data & 0xFFF) as i16;
         let mut z = (data << 26 >> 38) as i32;
 
