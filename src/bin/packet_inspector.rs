@@ -116,6 +116,7 @@ mod customvec {
 
 #[macro_use]
 mod bigarray {
+    // inspired by https://stackoverflow.com/a/48976823
     pub trait BigArray<'de>: Sized {
         fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
         where

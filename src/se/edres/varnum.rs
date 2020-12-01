@@ -7,7 +7,6 @@ pub const VARINT_NAME: &str = "$__digmake_private_varint_name";
 pub const VARLONG_FIELD: &str = "$__digmake_private_varlong_field";
 pub const VARLONG_NAME: &str = "$__digmake_private_varlong_name";
 
-#[allow(unused_macros)]
 macro_rules! impl_deserialize {
     ($mdl:ident, ($typ:ty, $typ_ident:ident, $typ_expr:expr), $ityp:ty, ($FIELD:ident, $NAME:ident), $visit_func:ident, $visit_export:ident) => {
         mod $mdl {
