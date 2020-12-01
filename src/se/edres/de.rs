@@ -1,4 +1,4 @@
-use super::{error::Deserialize, varint};
+use super::{error::Deserialize, varnum};
 use crate::se::{
     error::{Error, Result},
     mon::{self, Parse, ParseB},
@@ -266,9 +266,14 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        if name == varint::VARINT_NAME && fields == [varint::VARINT_FIELD] {
+        if name == varnum::VARINT_NAME && fields == [varnum::VARINT_FIELD] {
             let value = self.update(VarInt::parse(self.input))?;
-            return visitor.visit_map(varint::VarIntDeserializer::new(value));
+            return visitor.visit_map(varnum::VarIntDeserializer::new(value));
+        }
+
+        if name == varnum::VARLONG_NAME && fields == [varnum::VARLONG_FIELD] {
+            let value = self.update(VarLong::parse(self.input))?;
+            return visitor.visit_map(varnum::VarLongDeserializer::new(value));
         }
 
         self.deserialize_seq_known_length(visitor)

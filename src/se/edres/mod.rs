@@ -2,7 +2,7 @@ mod de;
 pub mod error;
 mod ser;
 mod types;
-mod varint;
+mod varnum;
 
 use crate::se::error::Result;
 use crate::se::Input;
