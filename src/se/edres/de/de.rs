@@ -1,4 +1,4 @@
-use super::{error::Deserialize, varnum};
+use super::{error::DeError, varnum};
 use crate::se::{
     error::{Error, Result},
     mon::{self, Parse, ParseB},
@@ -6,12 +6,8 @@ use crate::se::{
 };
 use nom::number::complete as nom_num;
 use nom::Finish;
-use serde::{
-    self,
-    de::{
-        DeserializeSeed, Deserializer as SDeserializer, EnumAccess, SeqAccess, VariantAccess,
-        Visitor,
-    },
+use serde::de::{
+    DeserializeSeed, Deserializer as SDeserializer, EnumAccess, SeqAccess, VariantAccess, Visitor,
 };
 
 pub(super) struct Deserializer<'de> {
@@ -55,7 +51,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(Deserialize::InvalidType("any"))?
+        Err(DeError::InvalidType("any"))?
     }
 
     fn deserialize_bool<V>(self, visitor: V) -> Result<V::Value>
@@ -153,7 +149,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(Deserialize::InvalidType("char"))?
+        Err(DeError::InvalidType("char"))?
     }
 
     fn deserialize_str<V>(self, visitor: V) -> Result<V::Value>
@@ -253,7 +249,7 @@ impl<'de, 'a> SDeserializer<'de> for &'a mut Deserializer<'de> {
     where
         V: Visitor<'de>,
     {
-        Err(Deserialize::InvalidType("map"))?
+        Err(DeError::InvalidType("map"))?
     }
 
     // structs are stored the same as their contents because we dont store keys

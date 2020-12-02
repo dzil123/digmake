@@ -1,4 +1,5 @@
-use super::edres::error::Deserialize;
+use super::edres::de::error::DeError;
+use super::edres::ser::error::SerError;
 use super::{mon, Input};
 use std::io;
 use thiserror::Error as ThisError;
@@ -17,7 +18,10 @@ pub enum Error {
     Eof,
 
     #[error(transparent)]
-    SerdeDe(#[from] Deserialize),
+    SerdeDe(#[from] DeError),
+
+    #[error(transparent)]
+    SerdeSer(#[from] SerError),
 
     #[error(transparent)]
     NumConversion(#[from] std::num::TryFromIntError),
