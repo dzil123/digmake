@@ -4,7 +4,7 @@ use crate::se::{
     Input, VarInt, VarLong,
 };
 use nom::{bytes::complete::take, error::context, number::complete::be_u8};
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 pub trait Parse<T> {
     fn parse(input: Input) -> MonResult<T>;
@@ -107,6 +107,10 @@ macro_rules! var_num {
                 I: std::io::Read,
             {
                 Ok(usize::try_from(Self::_parse(input)?)?)
+            }
+
+            pub fn from_usize(val: usize) -> Result<Self> {
+                Ok(Self(val.try_into()?))
             }
         }
     };

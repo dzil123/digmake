@@ -5,6 +5,10 @@ use thiserror::Error as ThisError;
 
 #[derive(ThisError, Debug)]
 pub enum SerError {
+    #[error("cannot serialize '{0}'")]
+    InvalidType(&'static str),
+    #[error("variant too large '{0}'")]
+    LargeVariant(u32),
     #[error("{0}")]
     Other(String),
 }
