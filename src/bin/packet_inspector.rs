@@ -28,6 +28,7 @@ mod customvec {
             pub mod $name {
                 use super::Index;
                 use serde::de::{Deserialize, Deserializer, Error, SeqAccess, Unexpected, Visitor};
+                use serde::ser::{Serialize, Serializer};
                 use std::convert::TryFrom;
                 use std::marker::PhantomData;
 
@@ -106,6 +107,14 @@ mod customvec {
                     // only works if (len, item0, item1, ...) == (len, (item0, item1, ...))
                     de.deserialize_tuple(0, visitor)
                 }
+
+                pub fn serialize<T, S>(val: &T, serializer: S) -> Result<S::Ok, S::Error>
+                where
+                    T: Serialize,
+                    S: Serializer,
+                {
+                    todo!()
+                }
             }
         };
     }
@@ -121,12 +130,17 @@ mod bigarray {
         fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
         where
             D: serde::de::Deserializer<'de>;
+
+        fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+        where
+            S: serde::ser::Serializer;
     }
 
     #[macro_export]
     macro_rules! big_array {
         ($len:expr) => {
             use serde::de::{Deserialize, Deserializer, Error, SeqAccess, Visitor};
+            use serde::ser::{Serialize, Serializer};
             use std::fmt;
             use std::marker::PhantomData;
 
@@ -176,6 +190,13 @@ mod bigarray {
                     };
                     deserializer.deserialize_tuple($len, visitor)
                 }
+
+                fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+                where
+                    S: Serializer,
+                {
+                    todo!()
+                }
             }
         };
     }
@@ -189,7 +210,7 @@ fn blocked_on_nbt() {
     blocked_on("nbt");
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, serde::Serialize)]
 #[serde(remote = "uuid::Uuid")]
 struct Uuid(#[serde(getter = "uuid::Uuid::as_bytes")] [u8; 16]);
 
@@ -203,7 +224,10 @@ fn read_first<T>(slice: &[T]) -> &[T] {
     &slice[..10.min(slice.len())]
 }
 
-fn read_packet<'a, T: serde::de::Deserialize<'a>>(buffer: Input<'a>) -> Result<T> {
+fn read_packet<'a, T>(buffer: Input<'a>) -> Result<T>
+where
+    T: serde::Deserialize<'a> + serde::Serialize,
+{
     println!("Packet of type {}:", std::any::type_name::<T>(),);
     let (rest_input, packet) = from_bytes_debug(buffer);
     let packet = packet?;
@@ -214,6 +238,8 @@ fn read_packet<'a, T: serde::de::Deserialize<'a>>(buffer: Input<'a>) -> Result<T
             read_first(rest_input)
         );
     }
+
+    let seri = digmake::se::serialize(&packet).unwrap();
 
     Ok(packet)
 }
@@ -239,6 +265,21 @@ impl Data {
     }
 }
 
+fn serialize_test<T>(data: T, buffer: &[u8])
+where
+    T: serde::Serialize + Debug,
+{
+    show_packet_dbg(&buffer);
+    show_packet_dbg(&data);
+
+    use digmake::se::serialize;
+
+    let output = serialize(data).unwrap();
+    show_packet_dbg(&output);
+
+    panic!();
+}
+
 fn do_one_packet<T: BufRead>(
     mut reader: &mut T,
     is_server: bool,
@@ -259,7 +300,7 @@ fn do_one_packet<T: BufRead>(
 
         match (packet_id, is_server) {
             (0x00, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Handshake<'a> {
                     protocol_version: VarInt,
                     address: &'a str,
@@ -267,18 +308,21 @@ fn do_one_packet<T: BufRead>(
                     next_state: VarInt,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct LoginStart<'a> {
                     name: &'a str,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct TeleportConfirm {
                     teleport_id: VarInt,
                 }
 
                 match read_packet::<Handshake>(buffer) {
-                    Ok(packet) => show_packet_dbg(packet),
+                    Ok(packet) => {
+                        show_packet_dbg(packet)
+                        // serialize_test(packet, buffer);
+                    }
                     Err(_) => match read_packet::<LoginStart>(buffer) {
                         Ok(packet) => show_packet_dbg(packet),
                         Err(_) => show_packet_dbg(read_packet::<TeleportConfirm>(buffer)?),
@@ -286,7 +330,7 @@ fn do_one_packet<T: BufRead>(
                 }
             }
             (0x00, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Response<'a> {
                     json: &'a str,
                 }
@@ -295,14 +339,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dsp(packet.json);
             }
             (0x01, _is_pong) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PingPong(i64);
 
                 let packet: PingPong = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
             (0x02, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct LoginSuccess<'a> {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
@@ -313,7 +357,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x02, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct SpawnLivingEntity {
                     entity_id: VarInt,
                     #[serde(with = "Uuid")]
@@ -334,20 +378,20 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x05, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum ChatMode {
                     Enabled,
                     CommandsOnly,
                     Hidden,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Hand {
                     Left,
                     Right,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct ClientSettings {
                     locale: String,
                     view_distance: u8, // chunks
@@ -361,7 +405,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x0B, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PluginMessageClient<'a> {
                     channel: String,
                     data: &'a [u8],
@@ -371,7 +415,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x0D, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Difficulty {
                     Peaceful,
                     Easy,
@@ -379,7 +423,7 @@ fn do_one_packet<T: BufRead>(
                     Hard,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct ServerDifficulty {
                     difficulty: Difficulty,
                     locked: bool,
@@ -389,7 +433,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x10, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct DeclareCommands {
                     node_len: VarInt,
                     // nodes: Vec<Node>,
@@ -401,7 +445,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x12, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PlayerPosition {
                     pos: (f64, f64, f64),
                     on_ground: bool,
@@ -411,7 +455,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x13, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PlayerPosition {
                     pos: (f64, f64, f64),
                     yaw: f32,
@@ -423,14 +467,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x13, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Slot {
                     item_id: VarInt,
                     item_count: u8,
                     nbt: (),
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct WindowItems {
                     window_id: u8,
                     #[serde(with = "customvec::short")]
@@ -442,7 +486,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x15, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PlayerMovement {
                     on_ground: bool,
                 }
@@ -451,14 +495,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x15, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Slot {
                     item_id: VarInt,
                     item_count: u8,
                     nbt: (),
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct SetSlotInWindow {
                     window_id: i8,
                     slot: i16,
@@ -470,7 +514,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x17, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PluginMessageServer<'a> {
                     channel: String,
                     data: &'a [u8],
@@ -480,7 +524,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x1A, false) => {
-                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(u8)]
                 enum PlayerAbilities {
                     NotFlying = 0x00,
@@ -491,7 +535,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x1A, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct EntityStatus {
                     id: i32,
                     status: u8,
@@ -501,14 +545,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x1F, true) | (0x10, false) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct KeepAlive(i64);
 
                 let packet: KeepAlive = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
             (0x20, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct ChunkData {
                     chunk_x: i32,
                     chunk_y: i32,
@@ -521,7 +565,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg_min(packet);
             }
             (0x23, true) => {
-                #[derive(serde::Deserialize)]
+                #[derive(serde::Deserialize, serde::Serialize)]
                 struct LightArray(Vec<u8>);
 
                 impl Debug for LightArray {
@@ -533,7 +577,7 @@ fn do_one_packet<T: BufRead>(
                     }
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateLight {
                     chunk_x: VarInt,
                     chunk_y: VarInt,
@@ -550,7 +594,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg_min(packet);
             }
             (0x24, true) => {
-                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(i8)]
                 enum Gamemode {
                     Survival = 0,
@@ -559,7 +603,7 @@ fn do_one_packet<T: BufRead>(
                     Spectator = 3,
                 }
 
-                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(i8)]
                 enum PreviousGamemode {
                     Survival = 0,
@@ -573,7 +617,7 @@ fn do_one_packet<T: BufRead>(
                 use crate::bigarray::BigArray;
                 big_array!(30746);
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct JoinGame {
                     entity_id: i32,
                     is_hardcore: bool,
@@ -597,7 +641,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x30, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PlayerAbilities {
                     flags: u8, // bitfield
                     fly_speed: f32,
@@ -608,14 +652,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x32, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Properties {
                     name: String,
                     value: String,
                     signature: Option<String>,
                 }
 
-                #[derive(serde_repr::Deserialize_repr, Debug)]
+                #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(i8)]
                 enum Gamemode {
                     Survival = 0,
@@ -624,7 +668,7 @@ fn do_one_packet<T: BufRead>(
                     Spectator = 3,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Add {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
@@ -635,34 +679,34 @@ fn do_one_packet<T: BufRead>(
                     display_name: Option<String>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateGamemode {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
                     gamemode: VarInt,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateLatency {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
                     ping: VarInt,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateDisplayName {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
                     display_name: Option<String>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct RemovePlayer {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum PlayerInfo {
                     Add(Vec<Add>),
                     UpdateGamemode(Vec<UpdateGamemode>),
@@ -675,7 +719,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x34, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PlayerPositionAndLook {
                     pos: (f64, f64, f64),
                     yaw: f32,
@@ -688,7 +732,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x35, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Common {
                     crafting_book: bool,
                     crafting_filter: bool,
@@ -701,14 +745,14 @@ fn do_one_packet<T: BufRead>(
                     recipe_ids: Vec<String>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Action {
                     Init(Common, Vec<String>),
                     Add(Common),
                     Remove(Common),
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UnlockRecipes {
                     action: Action,
                 }
@@ -717,7 +761,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x3D, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum WorldBorder {
                     Diameter(f64),
                     LerpSize {
@@ -745,7 +789,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x3F, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct HeldItemChange {
                     slot: u8, // which slot player selected, 0-8
                 }
@@ -754,7 +798,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x40, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateViewPosition {
                     chunk_x: VarInt,
                     chunk_z: VarInt,
@@ -764,14 +808,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x42, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct SpawnPosition(Position);
 
                 let packet: SpawnPosition = read_packet(buffer)?;
                 show_packet_dbg(packet);
             }
             (0x44, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct EntityMetadata {
                     entity_id: VarInt,
                     // impossible to parse
@@ -782,7 +826,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x48, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct SetXP {
                     xp_bar: f32, // 0-1
                     level: VarInt,
@@ -793,7 +837,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x49, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct UpdateHealth {
                     health: f32,
                     food: VarInt,
@@ -804,7 +848,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x4E, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct TimeUpdate {
                     world_age: i64,
                     time_of_day: i64,
@@ -814,7 +858,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x57, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Frame {
                     Task,
                     Challenge,
@@ -822,14 +866,14 @@ fn do_one_packet<T: BufRead>(
                 }
 
                 #[allow(non_camel_case_types)]
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Flags {
                     None,
                     Background { texture: String },
                     Toast,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Display {
                     title: String,
                     desc: String,
@@ -839,7 +883,7 @@ fn do_one_packet<T: BufRead>(
                     coords: (f32, f32),
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Advancement {
                     name: String,
                     parent: Option<String>,
@@ -848,13 +892,13 @@ fn do_one_packet<T: BufRead>(
                     requirements: Vec<Vec<String>>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Progress {
                     name: String,
                     criteria: Vec<(String, Option<i64>)>, // name, achieved?, date of achieving
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Advancements {
                     reset_clear: bool,
                     advancements: Vec<Advancement>,
@@ -867,14 +911,14 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x58, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 enum Operation {
                     AbsoluteAdd, // value += amount
                     PercentAdd,  // value += amount * value
                     Multiply,    // value *= amount
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Modifier {
                     #[serde(with = "Uuid")]
                     uuid: uuid::Uuid,
@@ -882,14 +926,14 @@ fn do_one_packet<T: BufRead>(
                     operation: Operation,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Property {
                     key: String,
                     value: f64,
                     modifiers: Vec<Modifier>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct EntityProperties {
                     entity_id: VarInt,
                     #[serde(with = "customvec::int")]
@@ -900,7 +944,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x5A, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Recipe;
 
                 let packet: Vec<Recipe> = read_packet(buffer)?;
@@ -909,13 +953,13 @@ fn do_one_packet<T: BufRead>(
                 // show_packet_dbg_min(packet);
             }
             (0x5B, true) => {
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Tag {
                     name: String,
                     entries: Vec<VarInt>,
                 }
 
-                #[derive(serde::Deserialize, Debug)]
+                #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct Tags {
                     blocks: Vec<Tag>,
                     items: Vec<Tag>,
