@@ -240,6 +240,9 @@ where
     }
 
     let seri = digmake::se::serialize(&packet).unwrap();
+    if buffer != seri {
+        panic!("unequal type {}:", std::any::type_name::<T>());
+    }
 
     Ok(packet)
 }
@@ -594,6 +597,11 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg_min(packet);
             }
             (0x24, true) => {
+                // i cannot parse nbt, and i cant serialize a bigarray, so treat this packet as a single black box
+                let packet: &[u8] = read_packet(buffer)?;
+                show_packet_dbg(packet);
+                return Ok(());
+
                 #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(i8)]
                 enum Gamemode {

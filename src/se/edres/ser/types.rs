@@ -6,6 +6,11 @@ impl ser::Serialize for Position {
     where
         S: ser::Serializer,
     {
-        todo!()
+        let x = (self.x as i64) & 0x3FFFFFF;
+        let y = (self.y as i64) & 0xFFF;
+        let z = (self.z as i64) & 0x3FFFFFF;
+
+        let data = (x << 38) | (z << 12) | y;
+        serializer.serialize_i64(data)
     }
 }

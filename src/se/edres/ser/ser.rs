@@ -13,7 +13,7 @@ impl Serialize for VarInt {
     {
         use serde::ser::SerializeTuple;
 
-        let mut val = self.0;
+        let mut val: u32 = self.0 as _;
         let mut ser = ser.serialize_tuple(0)?; // len is not checked by us
 
         loop {
