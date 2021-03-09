@@ -24,6 +24,7 @@ path = "src/bin/test.rs"
 
 [dependencies]
 base64 = "0.13.0"
+hematite-nbt = "0.5.1"
 hex = "0.4.2"
 md5 = "0.7.0"
 nom = { version = "6.0.0", features = ["alloc"] }

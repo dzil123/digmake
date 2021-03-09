@@ -1,5 +1,4 @@
-use digmake::se::Position;
-use digmake::se::{from_bytes_debug, Input, Result, VarInt};
+use digmake::se::{DeNBTBlob, Input, Position, Result, VarInt, from_bytes_debug};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::fs::File;
@@ -519,6 +518,7 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg(packet);
             }
             (0x17, true) => {
+                panic!(); // for testing only the nbt in 0x24
                 #[derive(serde::Deserialize, serde::Serialize, Debug)]
                 struct PluginMessageServer {
                     channel: String,
@@ -600,10 +600,6 @@ fn do_one_packet<T: BufRead>(
                 show_packet_dbg_min(packet);
             }
             (0x24, true) => {
-                // i cannot parse nbt, and i cant serialize a bigarray, so treat this packet as a single black box
-                let packet: &Bytes = read_packet(buffer)?;
-                show_packet_dbg(packet);
-                return Ok(());
 
                 #[derive(serde_repr::Deserialize_repr, serde_repr::Serialize_repr, Debug)]
                 #[repr(i8)]
@@ -635,8 +631,8 @@ fn do_one_packet<T: BufRead>(
                     gamemode: Gamemode,
                     prev_gamemode: PreviousGamemode,
                     worlds: Vec<String>,
-                    #[serde(with = "BigArray")]
-                    unparsed_nbt: std::marker::PhantomData<u8>,
+                    dimension_codec: DeNBTBlob,
+                    dimension: DeNBTBlob,
                     spawn_world: String,
                     hashed_seed: i64,
                     max_players: VarInt,
@@ -647,8 +643,7 @@ fn do_one_packet<T: BufRead>(
                     is_flat: bool,
                 }
 
-                let packet: JoinGame = read_packet(buffer)?;
-                blocked_on_nbt();
+                let packet: JoinGame = read_packet(buffer).unwrap();
                 show_packet_dbg(packet);
             }
             (0x30, true) => {

@@ -1,8 +1,10 @@
 mod edres;
 mod error;
 mod mon;
+mod nbt;
 mod types;
 
+pub use self::nbt::DeNBTBlob;
 pub use edres::de::{from_bytes, from_bytes_debug};
 pub use edres::ser::serialize;
 pub use error::{Error, Result};
