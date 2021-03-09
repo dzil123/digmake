@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use serde::{self, Deserialize};
+use serde_bytes::{ByteBuf, Bytes};
 
 mod customvec {
     // Default Vec impl is a VarInt length followed by an array
@@ -239,10 +240,10 @@ where
         );
     }
 
-    let seri = digmake::se::serialize(&packet).unwrap();
-    if buffer != seri {
-        panic!("unequal type {}:", std::any::type_name::<T>());
-    }
+    // let seri = digmake::se::serialize(&packet).unwrap();
+    // if buffer != seri {
+    //     panic!("unequal type {}:", std::any::type_name::<T>());
+    // }
 
     Ok(packet)
 }
@@ -409,9 +410,9 @@ fn do_one_packet<T: BufRead>(
             }
             (0x0B, false) => {
                 #[derive(serde::Deserialize, serde::Serialize, Debug)]
-                struct PluginMessageClient<'a> {
+                struct PluginMessageClient {
                     channel: String,
-                    data: &'a [u8],
+                    data: ByteBuf,
                 }
 
                 let packet: PluginMessageClient = read_packet(buffer)?;
@@ -441,6 +442,7 @@ fn do_one_packet<T: BufRead>(
                     node_len: VarInt,
                     // nodes: Vec<Node>,
                     // root_index: VarInt,
+                    rest: ByteBuf,
                 }
 
                 let packet: DeclareCommands = read_packet(buffer)?;
@@ -518,9 +520,9 @@ fn do_one_packet<T: BufRead>(
             }
             (0x17, true) => {
                 #[derive(serde::Deserialize, serde::Serialize, Debug)]
-                struct PluginMessageServer<'a> {
+                struct PluginMessageServer {
                     channel: String,
-                    data: &'a [u8],
+                    data: ByteBuf,
                 }
 
                 let packet: PluginMessageServer = read_packet(buffer)?;
@@ -561,6 +563,7 @@ fn do_one_packet<T: BufRead>(
                     chunk_y: i32,
                     full_chunk: bool,
                     primary_bit_mask: VarInt,
+                    rest: ByteBuf,
                 }
 
                 let packet: ChunkData = read_packet(buffer)?;
@@ -598,7 +601,7 @@ fn do_one_packet<T: BufRead>(
             }
             (0x24, true) => {
                 // i cannot parse nbt, and i cant serialize a bigarray, so treat this packet as a single black box
-                let packet: &[u8] = read_packet(buffer)?;
+                let packet: &Bytes = read_packet(buffer)?;
                 show_packet_dbg(packet);
                 return Ok(());
 
@@ -953,11 +956,14 @@ fn do_one_packet<T: BufRead>(
             }
             (0x5A, true) => {
                 #[derive(serde::Deserialize, serde::Serialize, Debug)]
-                struct Recipe;
+                struct Recipes {
+                    len: VarInt,
+                    rest: ByteBuf,
+                }
 
-                let packet: Vec<Recipe> = read_packet(buffer)?;
+                let packet: Recipes = read_packet(buffer)?;
                 blocked_on("string enum");
-                println!("number of recipes read: {}", packet.len());
+                println!("number of recipes read: {}", packet.len);
                 // show_packet_dbg_min(packet);
             }
             (0x5B, true) => {
